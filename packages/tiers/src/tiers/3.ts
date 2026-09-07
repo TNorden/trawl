@@ -11,6 +11,7 @@ import {
   hasAkamaiChallenge,
   hasDataDomeChallenge,
   hasDdosGuardChallenge,
+  hasDuckDuckGoChallenge,
   hasImpervaChallenge,
   isBlocked,
   isBrowserErrorPage,
@@ -35,6 +36,7 @@ const DATACENTER_BLOCKED_REASONS: Partial<Record<ChallengeType, string>> = {
   "aws-waf": "datacenter-ip-blocked (AWS WAF token obtained but challenge persisted — needs residential proxy)",
   datadome:
     "datadome-persistent (a datadome cookie was issued but the wall held — check BROWSER_HEADFUL_POOL_SIZE, then try a residential proxy)",
+  duckduckgo: "datacenter-ip-blocked (DuckDuckGo anomaly challenge persisted — needs residential proxy)",
 }
 
 const DEFAULT_DATACENTER_BLOCKED_REASON =
@@ -234,6 +236,13 @@ export async function runTier3(
         reason: "datadome-persistent",
         challenge: "datadome",
       }
+    }
+
+    if (hasDuckDuckGoChallenge(html)) {
+      const pageTitle = await page.title().catch(() => "?")
+      const pageUrl = page.url()
+      console.log(`[tier3] duckduckgo-persistent: url="${pageUrl}" title="${pageTitle}" html=${html.length}b`)
+      return { tier: 3, status: "blocked", durationMs: Date.now() - start, reason: "duckduckgo-persistent" }
     }
 
     if (isBlocked(mainResponse.status, html)) {

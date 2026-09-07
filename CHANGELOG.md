@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **DuckDuckGo anomaly challenge detection.** Detect DuckDuckGo anomaly challenge walls (`//duckduckgo.com/anomaly.js`, `anomaly-modal`) in Tier 1 and the MITM proxy, escalating requests to the browser tiers rather than treating the challenge page as successful content (#119).
+
 ## [1.5.0] - 2026-09-04
 
 ### Changed

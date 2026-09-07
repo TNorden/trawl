@@ -7,6 +7,7 @@ import {
   hasAkamaiChallenge,
   hasAwsWafCaptcha,
   hasAwsWafChallenge,
+  hasDuckDuckGoChallenge,
   hasHcaptcha,
   hasRecaptcha,
   hasTurnstile,
@@ -135,6 +136,20 @@ export async function runTier1(
         durationMs: Date.now() - start,
         reason: "cloudflare-challenge",
         challenge: "cloudflare-interstitial",
+        responseHeaders,
+        contentType,
+        body: rawBytes,
+        statusCode: res.status,
+      }
+    }
+
+    if (hasDuckDuckGoChallenge(previewText, responseHeaders)) {
+      return {
+        tier: 1,
+        status: "needs-js",
+        durationMs: Date.now() - start,
+        reason: "duckduckgo-anomaly-challenge",
+        challenge: "duckduckgo",
         responseHeaders,
         contentType,
         body: rawBytes,

@@ -49,6 +49,11 @@ const fetchFixture = (req: Request): Response => {
     return new Response('<html><div id="sec-if-cpt-container" class="behavioral-content"></div></html>', {
       headers: { "Content-Type": "text/html; charset=utf-8" },
     })
+  if (pathname === "/duckduckgo-challenge")
+    return new Response(
+      '<form id="challenge-form" action="//duckduckgo.com/anomaly.js?sv=html"><div data-testid="anomaly-modal"></div></form>',
+      { status: 202, headers: { "Content-Type": "text/html; charset=utf-8" } },
+    )
   if (pathname === "/video")
     return new Response(chunked(Buffer.from([0, 1, 2, 3]), Buffer.from([4, 5, 6, 7])), {
       headers: { "Content-Type": "video/mp4" },
@@ -295,6 +300,20 @@ describe("directForwardHttp — buffered by default", () => {
     if (result.mode !== "buffer") return
     expect(result.challengeDetected).toBe(true)
     expect(result.body.toString()).toContain("Just a moment")
+  })
+
+  test("detects a 202 DuckDuckGo anomaly challenge", async () => {
+    const result = await directForwardHttp({
+      url: `${baseUrl}/duckduckgo-challenge`,
+      method: "POST",
+      headers: {},
+    })
+
+    expect(result.mode).toBe("buffer")
+    if (result.mode !== "buffer") return
+    expect(result.status).toBe(202)
+    expect(result.challengeDetected).toBe(true)
+    expect(result.body.toString()).toContain("anomaly-modal")
   })
 
   test("detects a challenge in a compressed HTML response", async () => {

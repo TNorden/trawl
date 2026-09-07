@@ -9,6 +9,7 @@ export type ChallengeType =
   | "ddos-guard"
   | "aws-waf"
   | "datadome"
+  | "duckduckgo"
   | "none"
 
 export function hasCloudflareChallengeHeader(headers: Record<string, string> = {}): boolean {
@@ -35,6 +36,7 @@ export function getAwsWafAction(
 export function isCloudflarePage(html: string, headers: Record<string, string>): boolean {
   if (hasCloudflareChallengeHeader(headers)) return true
   if (hasDdosGuardChallenge(html)) return false
+  if (hasDuckDuckGoChallenge(html)) return false
   if (/<title>[^<]*(just a moment|please wait|checking|attention required)[^<]*<\/title>/i.test(html)) return true
   if (/checking your browser/i.test(html)) return true
   if (/enable javascript and cookies to continue/i.test(html)) return true
@@ -139,6 +141,16 @@ export function hasDdosGuardChallenge(html: string, _headers: Record<string, str
   return false
 }
 
+// DuckDuckGo anti-bot anomaly challenge markers.
+// Ordinary DuckDuckGo search results do NOT contain anomaly.js or anomaly-modal elements.
+export function hasDuckDuckGoChallenge(html: string, _headers: Record<string, string> = {}): boolean {
+  if (/action=["'][^"']*\/anomaly\.js/i.test(html)) return true
+  if (/src=["'][^"']*\/anomaly\.js/i.test(html)) return true
+  if (/data-testid=["']anomaly-modal["']/i.test(html)) return true
+  if (/class=["'][^"']*anomaly-modal/i.test(html) && /challenge-form/i.test(html)) return true
+  return false
+}
+
 // AWS WAF JavaScript challenge — the interstitial page that loads challenge.js to
 // issue an aws-waf-token cookie before redirecting to the protected resource.
 export function hasAwsWafChallenge(html: string, headers: Record<string, string> = {}, status?: number): boolean {
@@ -220,6 +232,7 @@ export function detectChallengeType(
   if (hasDataDomeChallenge(html, headers, status)) return "datadome"
   if (hasTurnstile(html)) return "cloudflare-turnstile"
   if (hasDdosGuardChallenge(html, headers)) return "ddos-guard"
+  if (hasDuckDuckGoChallenge(html, headers)) return "duckduckgo"
   if (isCloudflarePage(html, headers)) return "cloudflare-interstitial"
   if (hasImpervaChallenge(html, headers)) return "imperva"
   if (hasAkamaiChallenge(html, headers)) return "akamai"
@@ -236,6 +249,7 @@ export function isBlocked(status: number, html: string): boolean {
   if (hasAkamaiChallenge(html)) return true
   if (hasDdosGuardChallenge(html)) return true
   if (hasDataDomeChallenge(html)) return true
+  if (hasDuckDuckGoChallenge(html)) return true
   return false
 }
 
@@ -245,7 +259,8 @@ export function needsJs(html: string, headers: Record<string, string>): boolean 
     hasImpervaChallenge(html, headers) ||
     hasAkamaiChallenge(html, headers) ||
     hasDdosGuardChallenge(html, headers) ||
-    hasDataDomeChallenge(html, headers)
+    hasDataDomeChallenge(html, headers) ||
+    hasDuckDuckGoChallenge(html, headers)
   )
 }
 
@@ -266,9 +281,15 @@ const LEAN_BODY_THRESHOLDS: Partial<Record<ChallengeType, number>> = {
 export function isChallengeWall(status: number, bodyLength: number, challengeType: ChallengeType): boolean {
   if (challengeType === "none") return false
   if (status === 403 || status === 503) return true
-  // These three never serve real content alongside their wall, so the type alone settles
+  // These four never serve real content alongside their wall, so the type alone settles
   // it. For datadome that leans on the header invariant documented in getDataDomeAction().
-  if (challengeType === "akamai" || challengeType === "aws-waf" || challengeType === "datadome") return true
+  if (
+    challengeType === "akamai" ||
+    challengeType === "aws-waf" ||
+    challengeType === "datadome" ||
+    challengeType === "duckduckgo"
+  )
+    return true
   const threshold = LEAN_BODY_THRESHOLDS[challengeType]
   if (threshold !== undefined && bodyLength < threshold) return true
   return false
