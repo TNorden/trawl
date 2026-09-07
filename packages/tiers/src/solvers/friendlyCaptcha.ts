@@ -21,6 +21,7 @@ export async function hasFriendlyCaptchaWidget(page: Page, timeoutMs = 3000): Pr
         ({ widgetSel, solutionSel }) => {
           if (document.querySelector(widgetSel)) return true
           if (document.querySelector(solutionSel)) return true
+          if (document.querySelector('iframe[src*="frcapi.com"], iframe[src*="friendlycaptcha"]')) return true
           return false
         },
         { widgetSel: WIDGET_SELECTORS, solutionSel: SOLUTION_SELECTORS },
@@ -38,11 +39,11 @@ export async function solveFriendlyCaptcha(page: Page, timeoutMs = 30_000): Prom
     const hasWidget = await hasFriendlyCaptchaWidget(page, 3000)
     if (!hasWidget) return false
 
-    // Check if already verified
+    // Check if already verified (tokens must not be empty or status placeholders like .UNACTIVATED)
     const isAlreadyVerified = await page
       .evaluate((sel) => {
         const input = document.querySelector(sel)
-        if (input instanceof HTMLInputElement && input.value.length > 10) return true
+        if (input instanceof HTMLInputElement && input.value.length > 20 && !input.value.startsWith(".")) return true
         const widget = document.querySelector(".frc-captcha, friendly-captcha, frc-captcha")
         if (widget?.classList.contains("frc-success")) return true
         if (widget?.getAttribute("data-state") === "success") return true
@@ -55,7 +56,22 @@ export async function solveFriendlyCaptcha(page: Page, timeoutMs = 30_000): Prom
       return true
     }
 
-    // Trigger verification: click button or checkbox inside widget / shadow DOM
+    // Trigger verification:
+    // Case 1: If an iframe is used (Friendly Captcha v2)
+    const frcFrame = page.frames().find((f) => {
+      if (f === page.mainFrame()) return false
+      const u = f.url()
+      return u.includes("captcha/widget") || (u.includes("friendlycaptcha") && u.includes("widget"))
+    })
+    if (frcFrame) {
+      const btn = frcFrame.locator('button[role="checkbox"], button.button, button').first()
+      if (await btn.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await btn.click({ timeout: 5000, force: true }).catch(() => {})
+        console.log("[friendly-captcha] clicked verification button inside widget iframe")
+      }
+    }
+
+    // Case 2: In-page button or custom element (Friendly Captcha v1 or custom v2 element)
     await page
       .evaluate((widgetSel) => {
         const widget = document.querySelector(widgetSel)
@@ -80,7 +96,7 @@ export async function solveFriendlyCaptcha(page: Page, timeoutMs = 30_000): Prom
       const verified = await page
         .evaluate((sel) => {
           const input = document.querySelector(sel)
-          if (input instanceof HTMLInputElement && input.value.length > 10) return true
+          if (input instanceof HTMLInputElement && input.value.length > 20 && !input.value.startsWith(".")) return true
           const widget = document.querySelector(".frc-captcha, friendly-captcha, frc-captcha")
           if (widget?.classList.contains("frc-success")) return true
           if (widget?.getAttribute("data-state") === "success") return true
@@ -92,6 +108,21 @@ export async function solveFriendlyCaptcha(page: Page, timeoutMs = 30_000): Prom
         console.log("[friendly-captcha] verified successfully ✓")
         return true
       }
+
+      // Check iframe state if present
+      if (frcFrame) {
+        const checked = await frcFrame
+          .evaluate(() => {
+            const btn = document.querySelector('button[role="checkbox"], button.button')
+            return btn?.getAttribute("aria-checked") === "true"
+          })
+          .catch(() => false)
+        if (checked) {
+          console.log("[friendly-captcha] iframe marked verified ✓")
+          return true
+        }
+      }
+
       await new Promise((r) => setTimeout(r, 400))
     }
 

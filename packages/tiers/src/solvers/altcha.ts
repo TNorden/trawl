@@ -49,7 +49,17 @@ export async function solveAltcha(page: Page, timeoutMs = 30_000): Promise<boole
       return true
     }
 
-    // Trigger verification: click checkbox/button inside the custom element or shadow DOM
+    // Trigger verification:
+    // 1. Playwright locator click (pierces shadow DOM automatically)
+    const widgetLocator = page.locator(
+      'altcha-widget input[type="checkbox"], altcha-widget, .altcha input[type="checkbox"], .altcha',
+    )
+    await widgetLocator
+      .first()
+      .click({ timeout: 2000, force: true })
+      .catch(() => {})
+
+    // 2. DOM evaluate fallback
     await page
       .evaluate(() => {
         const widget = document.querySelector("altcha-widget")
