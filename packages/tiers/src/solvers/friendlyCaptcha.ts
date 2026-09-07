@@ -56,43 +56,71 @@ export async function solveFriendlyCaptcha(page: Page, timeoutMs = 30_000): Prom
       return true
     }
 
-    // Trigger verification:
-    // Case 1: If an iframe is used (Friendly Captcha v2)
-    const frcFrame = page.frames().find((f) => {
-      if (f === page.mainFrame()) return false
-      const u = f.url()
-      return u.includes("captcha/widget") || (u.includes("friendlycaptcha") && u.includes("widget"))
-    })
-    if (frcFrame) {
-      const btn = frcFrame.locator('button[role="checkbox"], button.button, button').first()
-      if (await btn.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await btn.click({ timeout: 5000, force: true }).catch(() => {})
-        console.log("[friendly-captcha] clicked verification button inside widget iframe")
+    const widgetFrameLocator = page.frameLocator(
+      'iframe.frc-i-widget, iframe[src*="captcha/widget"], iframe[src*="frcapi.com"], .frc-captcha iframe, friendly-captcha iframe',
+    )
+
+    let clicked = false
+    const tryClick = async (): Promise<boolean> => {
+      // 1. Frame locator (v2 iframe)
+      const frameBtn = widgetFrameLocator.locator('button[role="checkbox"], button.button, button').first()
+      const clickedFrame = await frameBtn
+        .click({ timeout: 1500, force: true })
+        .then(() => true)
+        .catch(() => false)
+      if (clickedFrame) return true
+
+      // 2. page.frames() lookup
+      const frcFrame = page.frames().find((f) => {
+        if (f === page.mainFrame()) return false
+        const u = f.url()
+        return u.includes("captcha/widget") || (u.includes("friendlycaptcha") && u.includes("widget"))
+      })
+      if (frcFrame) {
+        const btn = frcFrame.locator('button[role="checkbox"], button.button, button').first()
+        const clickedDirect = await btn
+          .click({ timeout: 1500, force: true })
+          .then(() => true)
+          .catch(() => false)
+        if (clickedDirect) return true
       }
-    }
 
-    // Case 2: In-page button or custom element (Friendly Captcha v1 or custom v2 element)
-    await page
-      .evaluate((widgetSel) => {
-        const widget = document.querySelector(widgetSel)
-        if (widget) {
-          const root = widget.shadowRoot ?? widget
-          const btn = root.querySelector(
-            ".frc-button, button, input[type='button'], input[type='checkbox']",
-          ) as HTMLElement | null
-          if (btn) btn.click()
-        } else {
+      // 3. In-page element (v1 or custom v2 element)
+      const clickedInPage = await page
+        .evaluate((widgetSel) => {
+          const widget = document.querySelector(widgetSel)
+          if (widget) {
+            const root = widget.shadowRoot ?? widget
+            const btn = root.querySelector(
+              ".frc-button, button, input[type='button'], input[type='checkbox']",
+            ) as HTMLElement | null
+            if (btn) {
+              btn.click()
+              return true
+            }
+          }
           const btn = document.querySelector(".frc-captcha .frc-button, .frc-button") as HTMLElement | null
-          if (btn) btn.click()
-        }
-      }, WIDGET_SELECTORS)
-      .catch(() => {})
+          if (btn) {
+            btn.click()
+            return true
+          }
+          return false
+        }, WIDGET_SELECTORS)
+        .catch(() => false)
 
-    console.log("[friendly-captcha] triggered PoW challenge computation")
+      return Boolean(clickedInPage)
+    }
 
     // Poll until the solution input is populated or widget reaches success state
     const deadline = Date.now() + timeoutMs
     while (Date.now() < deadline) {
+      if (!clicked) {
+        clicked = await tryClick()
+        if (clicked) {
+          console.log("[friendly-captcha] triggered PoW challenge computation")
+        }
+      }
+
       const verified = await page
         .evaluate((sel) => {
           const input = document.querySelector(sel)
@@ -109,18 +137,14 @@ export async function solveFriendlyCaptcha(page: Page, timeoutMs = 30_000): Prom
         return true
       }
 
-      // Check iframe state if present
-      if (frcFrame) {
-        const checked = await frcFrame
-          .evaluate(() => {
-            const btn = document.querySelector('button[role="checkbox"], button.button')
-            return btn?.getAttribute("aria-checked") === "true"
-          })
-          .catch(() => false)
-        if (checked) {
-          console.log("[friendly-captcha] iframe marked verified ✓")
-          return true
-        }
+      const frameChecked = await widgetFrameLocator
+        .locator('button[role="checkbox"][aria-checked="true"]')
+        .first()
+        .isVisible()
+        .catch(() => false)
+      if (frameChecked) {
+        console.log("[friendly-captcha] frame locator marked verified ✓")
+        return true
       }
 
       await new Promise((r) => setTimeout(r, 400))

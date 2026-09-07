@@ -8,6 +8,7 @@ import {
   hasAwsWafCaptcha,
   hasAwsWafChallenge,
   hasHcaptcha,
+  hasPowChallenge,
   hasRecaptcha,
   hasTurnstile,
   isBlocked,
@@ -180,6 +181,19 @@ export async function runTier1(
         durationMs: Date.now() - start,
         reason: "turnstile-shell",
         challenge: "cloudflare-turnstile",
+        responseHeaders,
+        contentType,
+        body: rawBytes,
+        statusCode: res.status,
+      }
+    }
+    if (hasPowChallenge(previewText, responseHeaders)) {
+      return {
+        tier: 1,
+        status: "needs-js",
+        durationMs: Date.now() - start,
+        reason: "pow-challenge",
+        challenge: "pow",
         responseHeaders,
         contentType,
         body: rawBytes,

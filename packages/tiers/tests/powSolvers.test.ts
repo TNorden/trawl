@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { Page } from "patchright"
 import { hasAltchaWidget, hasFriendlyCaptchaWidget, solveAltcha, solveFriendlyCaptcha } from "../src/solvers"
+import { runTier1 } from "../src/tiers/1"
 import {
   detectChallengeType,
   hasPowChallenge,
@@ -134,5 +135,47 @@ describe("waitForPowResolution", () => {
 
     const res = await waitForPowResolution(mockPage, 50)
     expect(res).toBe("timeout")
+  })
+})
+
+describe("Tier 1 PoW challenge escalation", () => {
+  async function withFetch(response: Response, run: () => Promise<void>) {
+    const original = globalThis.fetch
+    ;(globalThis as { fetch: typeof fetch }).fetch = (async () => response) as typeof fetch
+    try {
+      await run()
+    } finally {
+      ;(globalThis as { fetch: typeof fetch }).fetch = original
+    }
+  }
+
+  test("escalates PoW interstitial to needs-js with pow challenge", async () => {
+    await withFetch(
+      new Response(POW_INTERSTITIAL_HTML, {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+      async () => {
+        const result = await runTier1("https://example.test/")
+        expect(result.status).toBe("needs-js")
+        expect(result.challenge).toBe("pow")
+        expect(result.reason).toBe("pow-challenge")
+      },
+    )
+  })
+
+  test("escalates PoW response based on X-PoW-Challenge header", async () => {
+    await withFetch(
+      new Response("<html><body>Loading</body></html>", {
+        status: 200,
+        headers: { "content-type": "text/html", "x-pow-challenge": "required" },
+      }),
+      async () => {
+        const result = await runTier1("https://example.test/")
+        expect(result.status).toBe("needs-js")
+        expect(result.challenge).toBe("pow")
+        expect(result.reason).toBe("pow-challenge")
+      },
+    )
   })
 })
