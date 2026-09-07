@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Proof-of-Work (PoW) and Wasm challenge support.** In-page solvers for Altcha (SHA-256 PoW) and Friendly Captcha (v1 and v2 client puzzle) widgets, plus detection and dedicated waiting for PoW gates and WebAssembly interstitials (`hasPowChallenge`, `waitForPowResolution`) (#121).
+
 ## [1.5.0] - 2026-09-04
 
 ### Changed

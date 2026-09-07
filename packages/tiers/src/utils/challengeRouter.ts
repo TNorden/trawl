@@ -7,6 +7,7 @@ import { type DataDomeResolution, waitForDataDomeResolution } from "./datadomeWa
 import { waitForDdosGuardResolution } from "./ddosGuardWait"
 import { type ChallengeType, detectChallengeType, getAwsWafAction, getDataDomeAction, hasAwsWafCaptcha } from "./detect"
 import { waitForImpervaResolution } from "./impervaWait"
+import { waitForPowResolution } from "./powWait"
 
 type Resolution = AwsWafResolution | DataDomeResolution
 type Waiter = (page: Page, timeoutMs: number, originalUrl?: string) => Promise<Resolution>
@@ -21,6 +22,7 @@ interface ChallengeWaiters {
   imperva: Waiter
   akamai: Waiter
   ddosGuard: Waiter
+  pow: Waiter
   awsWaf: (
     page: Page,
     timeoutMs: number,
@@ -40,6 +42,7 @@ const defaultWaiters: ChallengeWaiters = {
   imperva: waitForImpervaResolution,
   akamai: waitForAkamaiResolution,
   ddosGuard: waitForDdosGuardResolution,
+  pow: waitForPowResolution,
   awsWaf: (page, timeoutMs, originalUrl, initialTokens) =>
     waitForAwsWafResolution(page, timeoutMs, originalUrl, { initialTokens }),
   dataDome: (page, timeoutMs, originalUrl, initialCookies) =>
@@ -74,10 +77,12 @@ export async function routeChallengeWait(
         ? await waiters.akamai(page, timeoutMs, originalUrl)
         : challengeType === "ddos-guard"
           ? await waiters.ddosGuard(page, timeoutMs, originalUrl)
-          : challengeType === "aws-waf"
-            ? await waiters.awsWaf(page, timeoutMs, originalUrl, initialCookies?.awsWaf)
-            : challengeType === "datadome"
-              ? await waiters.dataDome(page, timeoutMs, originalUrl, initialCookies?.dataDome)
-              : await waiters.cloudflare(page, timeoutMs, originalUrl, () => headers)
+          : challengeType === "pow"
+            ? await waiters.pow(page, timeoutMs, originalUrl)
+            : challengeType === "aws-waf"
+              ? await waiters.awsWaf(page, timeoutMs, originalUrl, initialCookies?.awsWaf)
+              : challengeType === "datadome"
+                ? await waiters.dataDome(page, timeoutMs, originalUrl, initialCookies?.dataDome)
+                : await waiters.cloudflare(page, timeoutMs, originalUrl, () => headers)
   return { challengeType, resolution }
 }

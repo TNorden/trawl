@@ -9,6 +9,7 @@ export type ChallengeType =
   | "ddos-guard"
   | "aws-waf"
   | "datadome"
+  | "pow"
   | "none"
 
 export function hasCloudflareChallengeHeader(headers: Record<string, string> = {}): boolean {
@@ -35,6 +36,7 @@ export function getAwsWafAction(
 export function isCloudflarePage(html: string, headers: Record<string, string>): boolean {
   if (hasCloudflareChallengeHeader(headers)) return true
   if (hasDdosGuardChallenge(html)) return false
+  if (hasPowChallenge(html)) return false
   if (/<title>[^<]*(just a moment|please wait|checking|attention required)[^<]*<\/title>/i.test(html)) return true
   if (/checking your browser/i.test(html)) return true
   if (/enable javascript and cookies to continue/i.test(html)) return true
@@ -210,6 +212,48 @@ export function hasDataDomeCaptcha(html: string, headers: Record<string, string>
   return getDataDomeAction(html, headers, status) === "captcha"
 }
 
+// Proof-of-Work (PoW) and WebAssembly challenge detection.
+// Covers Altcha gate/interstitials, Friendly Captcha standalone gates, mCaptcha,
+// PoW Shield / Anomic PoW, and Wasm-based proof-of-work interstitial challenges.
+export function hasPowChallenge(html: string, headers: Record<string, string> = {}): boolean {
+  const lowerHeaders: Record<string, string> = {}
+  for (const [k, v] of Object.entries(headers)) lowerHeaders[k.toLowerCase()] = v
+  if (lowerHeaders["x-pow-challenge"] || lowerHeaders["x-altcha-challenge"]) return true
+
+  if (
+    /altcha-widget|altcha\.org\/|data-altcha/i.test(html) &&
+    /challenge|verification|security check|verifying|protected by/i.test(html)
+  ) {
+    return true
+  }
+
+  if (
+    /frc-captcha|friendly-captcha|friendlychallenge/i.test(html) &&
+    /verification|security check|verifying|robot|human/i.test(html)
+  ) {
+    return true
+  }
+
+  if (/m-captcha|mcaptcha/i.test(html)) return true
+  if (/powshield|pow-shield/i.test(html)) return true
+
+  if (
+    /(computing challenge|solving challenge|proof of work|proof-of-work|pow challenge|calculating proof)/i.test(html)
+  ) {
+    return true
+  }
+
+  if (
+    html.length < 5000 &&
+    /(checking your browser|verifying your request|completing security check)/i.test(html) &&
+    /(worker\.js|\.wasm|webassembly|challenge\.js|pow)/i.test(html)
+  ) {
+    return true
+  }
+
+  return false
+}
+
 export function detectChallengeType(
   html: string,
   headers: Record<string, string> = {},
@@ -220,6 +264,7 @@ export function detectChallengeType(
   if (hasDataDomeChallenge(html, headers, status)) return "datadome"
   if (hasTurnstile(html)) return "cloudflare-turnstile"
   if (hasDdosGuardChallenge(html, headers)) return "ddos-guard"
+  if (hasPowChallenge(html, headers)) return "pow"
   if (isCloudflarePage(html, headers)) return "cloudflare-interstitial"
   if (hasImpervaChallenge(html, headers)) return "imperva"
   if (hasAkamaiChallenge(html, headers)) return "akamai"
@@ -236,6 +281,7 @@ export function isBlocked(status: number, html: string): boolean {
   if (hasAkamaiChallenge(html)) return true
   if (hasDdosGuardChallenge(html)) return true
   if (hasDataDomeChallenge(html)) return true
+  if (hasPowChallenge(html)) return true
   return false
 }
 
@@ -245,7 +291,8 @@ export function needsJs(html: string, headers: Record<string, string>): boolean 
     hasImpervaChallenge(html, headers) ||
     hasAkamaiChallenge(html, headers) ||
     hasDdosGuardChallenge(html, headers) ||
-    hasDataDomeChallenge(html, headers)
+    hasDataDomeChallenge(html, headers) ||
+    hasPowChallenge(html, headers)
   )
 }
 
@@ -257,6 +304,7 @@ const LEAN_BODY_THRESHOLDS: Partial<Record<ChallengeType, number>> = {
   "cloudflare-interstitial": 3000,
   imperva: 5000,
   "ddos-guard": 3000,
+  pow: 5000,
 }
 
 // True if the response is a challenge wall (page access blocked) rather than a page
@@ -268,7 +316,13 @@ export function isChallengeWall(status: number, bodyLength: number, challengeTyp
   if (status === 403 || status === 503) return true
   // These three never serve real content alongside their wall, so the type alone settles
   // it. For datadome that leans on the header invariant documented in getDataDomeAction().
-  if (challengeType === "akamai" || challengeType === "aws-waf" || challengeType === "datadome") return true
+  if (
+    challengeType === "akamai" ||
+    challengeType === "aws-waf" ||
+    challengeType === "datadome" ||
+    challengeType === "pow"
+  )
+    return true
   const threshold = LEAN_BODY_THRESHOLDS[challengeType]
   if (threshold !== undefined && bodyLength < threshold) return true
   return false
