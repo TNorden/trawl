@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Publish a `-fonts` flavor of every release image (`:X.Y.Z-fonts`, `:latest-fonts`) with the complete spoofed Windows/macOS font bundles. Compact images now limit their runtime fingerprint pool to Linux when those bundles are absent, preventing rendered output and font probes from contradicting the advertised OS (#123).
 - Pluggable session cache driver selectable via `SESSION_CACHE_DRIVER` (`redis` default, bounded `memory` for single-instance deployments). The minimal Compose variant uses memory by default; `MEMORY_SESSION_CACHE_MAX_ENTRIES` limits it with LRU eviction (#117).
 - Local, provider-specific solving for embedded ALTCHA and Friendly Captcha v1/v2 proof-of-work widgets in browser tiers (#121).
 

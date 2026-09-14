@@ -77,6 +77,11 @@ Cloudflare detects datacenter Chromium via multiple signals: the CDP leak (`Runt
 
 Camoufox patches Firefox at the C++/Juggler level — fingerprint data (fonts, canvas, WebGL, screen resolution, locale) is spoofed before any JavaScript runs. CF's detection scripts see a real Firefox profile. This is harder to counter than JS-level patches because the data originates from native code, not overridden JS properties.
 
+The compact Docker images omit Camoufox's large Windows and macOS font bundles, so their pools
+automatically select Linux profiles only. The release `-fonts` flavor retains those bundles and
+enables the complete Windows/macOS/Linux pool; this keeps the claimed OS and measurable fonts
+consistent in both variants.
+
 ```typescript
 import { Camoufox } from 'camoufox-js'
 
