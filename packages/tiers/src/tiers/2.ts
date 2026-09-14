@@ -22,7 +22,7 @@ import {
 import { normalizeHtml } from "../utils/html"
 import { trackMainDocumentResponses } from "../utils/mainResponse"
 import { installOutboundPolicy, type OutboundUrlValidator } from "../utils/outboundPolicy"
-import { captureResponse, isTextContentType } from "../utils/response"
+import { captureResponse, isHtmlContentType, isTextContentType } from "../utils/response"
 import type { RouteLike } from "../utils/sanitize"
 import { routeContinueOverrides } from "../utils/sanitize"
 
@@ -42,6 +42,7 @@ export interface Tier2Result extends TierResult {
   networkLogs?: NetworkLogEntry[]
   redirectChain?: string[]
   capturedResponses?: CapturedResponseEntry[]
+  mhtml?: string
 }
 
 export async function runTier2(
@@ -235,6 +236,7 @@ export async function runTier2(
       screenshot: shot,
       ...evidence,
       redirectChain: capture.redirectChain ? mainResponse.redirectChain : undefined,
+      mhtml: isHtmlContentType(captured.contentType) ? pageCapture.archive(page.url(), finalHtml) : undefined,
     }
   } catch (err) {
     return {

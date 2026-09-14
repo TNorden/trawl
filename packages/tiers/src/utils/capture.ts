@@ -44,9 +44,11 @@ export interface PageCapture {
   /** Holds the page open for the response-capture settle window; a no-op otherwise. */
   settle(budgetMs: number): Promise<void>
   drain(budgetMs?: number): Promise<CapturedPageEvidence>
+  /** Multipart/related archive of the observed subresources; undefined unless asked for. */
+  archive(url: string, html: string): string | undefined
 }
 
-const NO_CAPTURE: PageCapture = { settle: async () => {}, drain: async () => ({}) }
+const NO_CAPTURE: PageCapture = { settle: async () => {}, drain: async () => ({}), archive: () => undefined }
 
 const ms = (value: number): number => Math.round(value * 100) / 100
 
@@ -56,13 +58,15 @@ const ms = (value: number): number => Math.round(value * 100) / 100
  * the caller — a capture failure degrades that field, not the scrape.
  */
 export function attachPageCapture(page: Page, options: CaptureOptions): PageCapture {
-  if (!options.consoleLogs && !options.networkLogs && !options.captureResponses?.length) return NO_CAPTURE
+  if (!options.consoleLogs && !options.networkLogs && !options.captureResponses?.length && !options.mhtml)
+    return NO_CAPTURE
 
   const responses = attachResponseCapture(page, options)
   if (!options.consoleLogs && !options.networkLogs) {
     return {
       settle: (budgetMs) => responses.settle(budgetMs),
       drain: async (budgetMs) => ({ capturedResponses: await responses.drain(budgetMs) }),
+      archive: (url, html) => responses.archive(url, html),
     }
   }
 
@@ -157,6 +161,7 @@ export function attachPageCapture(page: Page, options: CaptureOptions): PageCapt
 
   return {
     settle: (budgetMs) => responses.settle(budgetMs),
+    archive: (url, html) => responses.archive(url, html),
     async drain(budgetMs = SIZES_TIMEOUT_MS) {
       const drainStarted = Date.now()
       const totalBudget = Math.max(0, Number.isFinite(budgetMs) ? budgetMs : 0)
