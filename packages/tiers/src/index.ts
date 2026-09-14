@@ -17,6 +17,7 @@ export {
   hasDataDomeCaptcha,
   hasDataDomeChallenge,
   hasDdosGuardChallenge,
+  hasDuckDuckGoChallenge,
   hasHcaptcha,
   hasImpervaChallenge,
   hasRecaptcha,
