@@ -29,7 +29,7 @@ instance are visible to all others. Use `memory` for single-instance deployments
 operational overhead of Redis is not justified; sessions are scoped to the process and lost on
 restart.
 
-Both drivers implement the `ISessionCache` interface, so additional backends (e.g. SQLite, Valkey,
+Both drivers implement the `SessionCacheStore` interface, so additional backends (e.g. SQLite, Valkey,
 KeyDB) can be added without touching the orchestrator or tier logic.
 
 ## Storage format
@@ -45,7 +45,7 @@ interface SessionData {
 }
 ```
 
-TTL: `REDIS_SESSION_TTL_SECONDS` (default 3600 seconds / 1 hour).
+TTL: `REDIS_SESSION_TTL_SECONDS` (default 3600 seconds / 1 hour) for both drivers.
 
 ## Session key
 
@@ -65,10 +65,10 @@ Subdomains have separate sessions because WAF and application cookies can differ
 Tier 3 succeeds
   │
   ├── extract cookies from browser context
-  ├── REDIS SET session:hostname → JSON  EX REDIS_SESSION_TTL_SECONDS
+  ├── cache session:hostname with the configured TTL
   │
   └── next request to same domain:
-        REDIS GET session:hostname
+        load session:hostname
           ├── hit  → Tier 2: inject cookies and navigate
           └── miss → Tier 3: fresh solve, save to cache
 ```
@@ -77,7 +77,7 @@ Tier 3 succeeds
 
 If Tier 2 navigates with cached state and still receives a recognized challenge wall, the orchestrator:
 
-1. Calls `sessionCache.invalidate(domain)` — deletes the Redis key
+1. Calls `sessionCache.invalidate(domain)` — deletes the cache entry
 2. Escalates to Tier 3 to get a fresh session
 
 This handles provider cookies expiring or being rejected before the Redis TTL ends.
@@ -105,8 +105,10 @@ const raw = await redis.get('session:example.com')
 ## In-memory
 
 When `SESSION_CACHE_DRIVER=memory`, TRAWL uses an in-process `Map` with TTL-based expiry. There is
-no `connect()` step and no network I/O — the cache is available immediately on startup. Entries
-are lazily expired on read and can be proactively pruned via `MemorySessionCache.prune()`.
+no network I/O, so the cache is available immediately on startup. Expired entries are removed on
+read and before writes. `MEMORY_SESSION_CACHE_MAX_ENTRIES` (default 1000) bounds memory growth;
+when full, the least recently used session is evicted.
 
 Because the cache lives in the API process, sessions are **not shared** across instances. A solve
-on instance A is invisible to instance B. Use this driver only for single-instance deployments.
+on instance A is invisible to instance B, and all sessions disappear on restart. Use this driver
+only for single-instance deployments. Session contents are never written to application logs.

@@ -1,9 +1,14 @@
 import { ProxyPool } from "@trawl/tiers"
 
 export const REDIS_URL = process.env.REDIS_URL?.trim() || undefined
-// Session cache driver: "redis" (default, shared across instances) or
-// "memory" (in-process Map, zero dependencies, per-instance only).
-export const SESSION_CACHE_DRIVER = (process.env.SESSION_CACHE_DRIVER ?? "redis").toLowerCase() as "redis" | "memory"
+export type SessionCacheDriver = "redis" | "memory"
+const configuredSessionCacheDriver = process.env.SESSION_CACHE_DRIVER?.trim().toLowerCase() || "redis"
+if (configuredSessionCacheDriver !== "redis" && configuredSessionCacheDriver !== "memory") {
+  throw new Error(
+    `Invalid SESSION_CACHE_DRIVER ${JSON.stringify(process.env.SESSION_CACHE_DRIVER)}; expected "redis" or "memory"`,
+  )
+}
+export const SESSION_CACHE_DRIVER: SessionCacheDriver = configuredSessionCacheDriver
 const integerInRange = (value: string | undefined, fallback: number, min: number, max = Number.MAX_SAFE_INTEGER) => {
   if (value === undefined || value.trim() === "") return fallback
   const parsed = Number(value)
@@ -19,6 +24,7 @@ export const POOL_SIZE = positiveInteger(process.env.BROWSER_POOL_SIZE, 3)
 // Tune lower for fast-fail feedback in dev; tune higher for very heavy upstream targets.
 export const ACQUIRE_TIMEOUT_MS = positiveInteger(process.env.BROWSER_ACQUIRE_TIMEOUT_MS, 15_000)
 export const REDIS_SESSION_TTL_SECONDS = positiveInteger(process.env.REDIS_SESSION_TTL_SECONDS, 3_600)
+export const MEMORY_SESSION_CACHE_MAX_ENTRIES = positiveInteger(process.env.MEMORY_SESSION_CACHE_MAX_ENTRIES, 1_000)
 // A failed initial Redis connection must not disable Tier 2 for the process lifetime.
 // Each attempt is bounded; failed attempts are retried in the background while the API stays ready.
 export const REDIS_CONNECT_TIMEOUT_MS = positiveInteger(process.env.REDIS_CONNECT_TIMEOUT_MS, 5_000)

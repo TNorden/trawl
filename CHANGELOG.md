@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Pluggable session cache driver selectable via `SESSION_CACHE_DRIVER` (`redis` default, `memory` for single-instance deployments). Introduces `ISessionCache` interface and `MemorySessionCache` implementation (#117).
+- Pluggable session cache driver selectable via `SESSION_CACHE_DRIVER` (`redis` default, bounded `memory` for single-instance deployments). The minimal Compose variant uses memory by default; `MEMORY_SESSION_CACHE_MAX_ENTRIES` limits it with LRU eviction (#117).
 
 ## [1.5.0] - 2026-09-04
 

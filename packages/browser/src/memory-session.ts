@@ -1,5 +1,5 @@
 import type { SessionData } from "@trawl/types"
-import type { ISessionCache } from "./session"
+import type { SessionCacheStore } from "./session"
 
 interface Entry {
   data: SessionData
@@ -13,12 +13,30 @@ interface Entry {
  * independent cache and a solve on instance A is NOT visible to instance B.
  * Use the Redis driver when cross-instance sharing is required.
  */
-export class MemorySessionCache implements ISessionCache {
+export class MemorySessionCache implements SessionCacheStore {
   private store = new Map<string, Entry>()
-  private ttl: number
+  private readonly ttlMs: number
+  private readonly maxEntries: number
+  private readonly now: () => number
 
-  constructor({ ttlSeconds }: { ttlSeconds: number }) {
-    this.ttl = ttlSeconds
+  constructor({
+    ttlSeconds,
+    maxEntries = 1_000,
+    now = Date.now,
+  }: {
+    ttlSeconds: number
+    maxEntries?: number
+    now?: () => number
+  }) {
+    if (!Number.isSafeInteger(ttlSeconds) || ttlSeconds <= 0) {
+      throw new Error("Memory session cache TTL must be a positive integer")
+    }
+    if (!Number.isSafeInteger(maxEntries) || maxEntries <= 0) {
+      throw new Error("Memory session cache max entries must be a positive integer")
+    }
+    this.ttlMs = ttlSeconds * 1_000
+    this.maxEntries = maxEntries
+    this.now = now
   }
 
   async connect(): Promise<void> {
@@ -26,7 +44,7 @@ export class MemorySessionCache implements ISessionCache {
   }
 
   close(): void {
-    // No-op — nothing to close.
+    this.store.clear()
   }
 
   private key(domain: string): string {
@@ -34,31 +52,42 @@ export class MemorySessionCache implements ISessionCache {
   }
 
   async save(domain: string, data: SessionData): Promise<void> {
-    this.store.set(this.key(domain), {
-      data,
-      expiresAt: Date.now() + this.ttl * 1000,
+    this.prune()
+    const key = this.key(domain)
+    this.store.delete(key)
+    while (this.store.size >= this.maxEntries) {
+      const oldest = this.store.keys().next().value
+      if (oldest === undefined) break
+      this.store.delete(oldest)
+    }
+    this.store.set(key, {
+      data: structuredClone(data),
+      expiresAt: this.now() + this.ttlMs,
     })
   }
 
   async load(domain: string): Promise<SessionData | undefined> {
-    const entry = this.store.get(this.key(domain))
+    const key = this.key(domain)
+    const entry = this.store.get(key)
     if (!entry) return
-    if (Date.now() >= entry.expiresAt) {
-      this.store.delete(this.key(domain))
+    if (this.now() >= entry.expiresAt) {
+      this.store.delete(key)
       return
     }
-    return entry.data
+    // Map preserves insertion order. Reinsert a hit so capacity eviction is LRU.
+    this.store.delete(key)
+    this.store.set(key, entry)
+    return structuredClone(entry.data)
   }
 
   async invalidate(domain: string): Promise<void> {
     this.store.delete(this.key(domain))
   }
 
-  /** Remove all expired entries. Call periodically if the workload is
-   *  high-churn and you want to bound memory growth. */
+  /** Remove all expired entries. Saves call this automatically. */
   prune(): number {
     let removed = 0
-    const now = Date.now()
+    const now = this.now()
     for (const [key, entry] of this.store) {
       if (now >= entry.expiresAt) {
         this.store.delete(key)

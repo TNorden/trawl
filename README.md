@@ -395,8 +395,10 @@ for pool and mounted-file examples.
 | `BROWSER_ACQUIRE_TIMEOUT_MS`     | `15000`                  | How long `acquire()` polls for a free browser before HTTP 429 is returned           |
 | `BROWSER_RECYCLE_AFTER_CONTEXTS` | `8`                      | Rolling-replace after this many Tier 3/4 contexts; set `0` to disable               |
 | `BROWSER_MAX_CONTENT_PROCESSES`  | `2`                      | Cap Firefox content processes per browser (`dom.ipc.processCount`); lowers RAM/CPU  |
-| `REDIS_SESSION_TTL_SECONDS`      | `3600`                   | Redis session cache TTL (seconds)                                                   |
-| `REDIS_URL`                      | —                        | Redis connection string; empty or unset disables the session cache                   |
+| `SESSION_CACHE_DRIVER`           | `redis`                  | Session cache backend: `redis` or single-process `memory`                           |
+| `REDIS_SESSION_TTL_SECONDS`      | `3600`                   | Redis or in-memory session TTL (seconds)                                            |
+| `MEMORY_SESSION_CACHE_MAX_ENTRIES` | `1000`                 | Maximum LRU-bounded entries for the memory driver                                   |
+| `REDIS_URL`                      | —                        | Redis connection string; empty or unset disables the Redis cache                     |
 | `REDIS_CONNECT_TIMEOUT_MS`       | `5000`                   | Maximum time for each Redis connection attempt                                      |
 | `REDIS_RETRY_DELAY_MS`           | `5000`                   | Delay before reconnecting after startup failure; `0` disables retry                 |
 | `PROXY_URL`                      | —                        | Optional Tier 3 HTTP or SOCKS5 proxy, or comma-separated pool                       |

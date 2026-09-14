@@ -1,4 +1,4 @@
-import { BrowserPool, MemorySessionCache, SessionCache } from "@trawl/browser"
+import { BrowserPool, MemorySessionCache, SessionCache, type SessionCacheStore } from "@trawl/browser"
 import type { AcquireOptions, OrchestratorDeps } from "@trawl/tiers"
 import type { SessionData } from "@trawl/types"
 import {
@@ -7,6 +7,7 @@ import {
   CLOSE_TIMEOUT_MS,
   HEADFUL_POOL_SIZE,
   LAUNCH_TIMEOUT_MS,
+  MEMORY_SESSION_CACHE_MAX_ENTRIES,
   POOL_SIZE,
   proxyPool,
   RECYCLE_AFTER_TEMPORARY_CONTEXTS,
@@ -16,6 +17,7 @@ import {
   REDIS_URL,
   residentialProxyPool,
   SESSION_CACHE_DRIVER,
+  type SessionCacheDriver,
   STALL_TIMEOUT_MS,
 } from "./config"
 
@@ -28,16 +30,8 @@ const handleOwners = new WeakMap<object, BrowserPool>()
 
 type BrowserPoolOptions = ConstructorParameters<typeof BrowserPool>[0]
 
-interface SessionCacheClient {
-  connect(timeoutMs?: number): Promise<void>
-  close(): void
-  load(domain: string): Promise<SessionData | undefined>
-  save(domain: string, data: SessionData): Promise<void>
-  invalidate(domain: string): Promise<void>
-}
-
 interface SessionCacheRecoveryOptions {
-  createCache: () => SessionCacheClient
+  createCache: () => SessionCacheStore
   connectTimeoutMs: number
   retryDelayMs: number
   onConnected?: () => void
@@ -45,13 +39,13 @@ interface SessionCacheRecoveryOptions {
 }
 
 export class SessionCacheRecovery {
-  private cache?: SessionCacheClient
+  private cache?: SessionCacheStore
   private retryTimer?: ReturnType<typeof setTimeout>
   private stopped = true
 
   constructor(private readonly options: SessionCacheRecoveryOptions) {}
 
-  current(): SessionCacheClient | undefined {
+  current(): SessionCacheStore | undefined {
     return this.cache
   }
 
@@ -94,29 +88,56 @@ export class SessionCacheRecovery {
   }
 }
 
-const redisUrl = REDIS_URL
-const sessionCacheRecovery = SESSION_CACHE_DRIVER === "memory"
-  ? new SessionCacheRecovery({
-      createCache: () => new MemorySessionCache({ ttlSeconds: REDIS_SESSION_TTL_SECONDS }),
+interface CreateSessionCacheRecoveryOptions {
+  driver: SessionCacheDriver
+  redisUrl?: string
+  ttlSeconds: number
+  memoryMaxEntries: number
+  redisConnectTimeoutMs: number
+  redisRetryDelayMs: number
+}
+
+export const createSessionCacheRecovery = ({
+  driver,
+  redisUrl,
+  ttlSeconds,
+  memoryMaxEntries,
+  redisConnectTimeoutMs,
+  redisRetryDelayMs,
+}: CreateSessionCacheRecoveryOptions): SessionCacheRecovery | undefined => {
+  if (driver === "memory") {
+    return new SessionCacheRecovery({
+      createCache: () => new MemorySessionCache({ ttlSeconds, maxEntries: memoryMaxEntries }),
       connectTimeoutMs: 0,
       retryDelayMs: 0,
       onConnected: () => console.log("[api] session cache: memory  (Tier 2 fast-path enabled, per-instance)"),
     })
-  : redisUrl
-    ? new SessionCacheRecovery({
-        createCache: () => new SessionCache({ redisUrl, ttlSeconds: REDIS_SESSION_TTL_SECONDS }),
-        connectTimeoutMs: REDIS_CONNECT_TIMEOUT_MS,
-        retryDelayMs: REDIS_RETRY_DELAY_MS,
-        onConnected: () => console.log("[api] session cache connected  (Tier 2 fast-path enabled)"),
-        onUnavailable: (err) => {
-          const retry = REDIS_RETRY_DELAY_MS > 0 ? `; retrying in ${REDIS_RETRY_DELAY_MS}ms` : ""
-          console.warn(
-            `[api] session cache unavailable — Tier 2 disabled${retry}:`,
-            err instanceof Error ? err.message : err,
-          )
-        },
-      })
-    : undefined
+  }
+  if (!redisUrl) return
+
+  return new SessionCacheRecovery({
+    createCache: () => new SessionCache({ redisUrl, ttlSeconds }),
+    connectTimeoutMs: redisConnectTimeoutMs,
+    retryDelayMs: redisRetryDelayMs,
+    onConnected: () => console.log("[api] session cache connected  (Tier 2 fast-path enabled)"),
+    onUnavailable: (err) => {
+      const retry = redisRetryDelayMs > 0 ? `; retrying in ${redisRetryDelayMs}ms` : ""
+      console.warn(
+        `[api] session cache unavailable — Tier 2 disabled${retry}:`,
+        err instanceof Error ? err.message : err,
+      )
+    },
+  })
+}
+
+const sessionCacheRecovery = createSessionCacheRecovery({
+  driver: SESSION_CACHE_DRIVER,
+  redisUrl: REDIS_URL,
+  ttlSeconds: REDIS_SESSION_TTL_SECONDS,
+  memoryMaxEntries: MEMORY_SESSION_CACHE_MAX_ENTRIES,
+  redisConnectTimeoutMs: REDIS_CONNECT_TIMEOUT_MS,
+  redisRetryDelayMs: REDIS_RETRY_DELAY_MS,
+})
 
 interface InitPoolOptions {
   poolSize?: number

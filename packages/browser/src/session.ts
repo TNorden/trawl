@@ -1,7 +1,7 @@
 import type { SessionData } from "@trawl/types"
 import { RedisClient } from "bun"
 
-export interface ISessionCache {
+export interface SessionCacheStore {
   connect(timeoutMs?: number): Promise<void>
   close(): void
   save(domain: string, data: SessionData): Promise<void>
@@ -9,7 +9,7 @@ export interface ISessionCache {
   invalidate(domain: string): Promise<void>
 }
 
-export class SessionCache implements ISessionCache {
+export class SessionCache implements SessionCacheStore {
   private redis: RedisClient
   private ttl: number
 
