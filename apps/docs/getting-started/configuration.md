@@ -288,20 +288,20 @@ reads start, so concurrent responses cannot exceed the total read budget.
 
 ## Blocked-Outcome Evidence
 
-Only read when a request sets `blockedEvidence: true` — see
-[Native API](/api-reference/native-api#blocked-outcome-evidence). Without it no page is
-read on the branch that gives up. One wall is kept per request, so its markup is the only
-unbounded dimension.
+Only retained when a request sets `blockedEvidence: true` — see
+[Native API](/api-reference/native-api#blocked-outcome-evidence). Without it the failure
+path captures no additional image or response data. Only the last wall is kept per request,
+and its markup, screenshot size and screenshot time are all bounded.
 
 | Variable | Default | Purpose |
 | --- | ---: | --- |
 | `BLOCKED_EVIDENCE_MAX_HTML_CHARS` | `512000` | Characters of the wall kept; past it `html` is the head of the page and `htmlTruncated` is set |
 
 The wall is truncated rather than dropped: unlike a stylesheet or an image, the head of a
-challenge page still carries the title, the vendor markers and the incident id a caller
-classifies on. Reading it never fails the scrape — a capture failure leaves the evidence
-off the error and logs the reason, and the HTTP status and `timings` are unchanged either
-way.
+challenge page still carries the title, vendor markers and incident id a caller classifies
+on. Capturing it never fails the scrape, and screenshots cannot extend the request budget.
+Challenge markup and screenshots can contain tokens, credentials or personal data; avoid
+logging, persisting or publicly exposing them unless that is explicitly intended.
 
 
 ## CAPTCHA audio and media tools

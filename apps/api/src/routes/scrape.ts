@@ -33,7 +33,11 @@ export function scrapeRoute(deps: () => OrchestratorDeps = getDeps, poolReady: (
       }
       set.status = 500
       if (err instanceof ScrapeError) {
-        return { error: err.message, timings: err.timings, blockedEvidence: err.blockedEvidence }
+        return {
+          error: err.message,
+          timings: err.timings,
+          ...(err.blockedEvidence ? { blockedEvidence: err.blockedEvidence } : {}),
+        }
       }
       return { error: err instanceof Error ? err.message : String(err) }
     }

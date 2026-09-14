@@ -5,6 +5,8 @@ import type { OrchestratorDeps } from "../src/orchestrator"
 import { ScrapeError, scrape } from "../src/orchestrator"
 import { runTier2 } from "../src/tiers/2"
 import { runTier3 } from "../src/tiers/3"
+import { runTier4 } from "../src/tiers/4"
+import { DATADOME_HTML_HARD_BLOCK } from "./fixtures/datadome"
 
 const WALL_HTML = `<html><head><title>Access denied</title></head><body><h1>403</h1>${"blocked ".repeat(40)}</body></html>`
 const JPEG = Buffer.from("fake-jpeg-bytes")
@@ -143,6 +145,29 @@ describe("blocked evidence", () => {
     expect(untouched.contentReads()).toBe(1)
   })
 
+  test("keeps markup but does not start a screenshot after the request budget is spent", async () => {
+    const { reported, sink: asked } = sink(true)
+    const wall = makePage()
+
+    const blocked = await runTier2(
+      "https://example.com",
+      poolHandle(wall.page),
+      session,
+      0,
+      {},
+      "GET",
+      "",
+      undefined,
+      true,
+      { blockedEvidence: asked },
+    )
+
+    expect(blocked.status).toBe("blocked")
+    expect(reported[0].html).toContain("Access denied")
+    expect(reported[0].screenshot).toBeUndefined()
+    expect(wall.screenshotCalls()).toBe(0)
+  })
+
   test("Tier 3 reports the persistent wall and keeps the tier result unchanged", async () => {
     const { reported, sink: asked } = sink(true)
     const stub = makePage()
@@ -165,6 +190,46 @@ describe("blocked evidence", () => {
     expect(reported).toHaveLength(1)
     expect(reported[0]).toMatchObject({ tier: 3, reason: "http-403", statusCode: 403 })
     expect(reported[0].screenshot).toBe(JPEG_BASE64)
+  })
+
+  test("Tier 4 reports the wall without changing its blocked result", async () => {
+    const { reported, sink: asked } = sink()
+    const stub = makePage()
+    const blocked = await runTier4(
+      "https://example.com",
+      freshHandle(stub.page),
+      4_000,
+      "http://proxy.example:8080",
+      {},
+      "GET",
+      "",
+      undefined,
+      false,
+      { blockedEvidence: asked },
+    )
+
+    expect(blocked).toEqual({ tier: 4, status: "blocked", durationMs: blocked.durationMs, reason: "http-403" })
+    expect(reported[0]).toMatchObject({ tier: 4, reason: "http-403", statusCode: 403 })
+    expect(reported[0].html).toContain("Access denied")
+  })
+
+  test("reports evidence for the current DataDome cached-session branch", async () => {
+    const { reported, sink: asked } = sink()
+    const blocked = await runTier2(
+      "https://example.com",
+      poolHandle(makePage({ html: DATADOME_HTML_HARD_BLOCK }).page),
+      session,
+      4_000,
+      {},
+      "GET",
+      "",
+      undefined,
+      false,
+      { blockedEvidence: asked },
+    )
+
+    expect(blocked.reason).toBe("datadome-session-expired")
+    expect(reported[0]).toMatchObject({ tier: 2, status: "blocked", reason: "datadome-session-expired" })
   })
 
   test("markup past the cap is truncated and flagged rather than dropped", async () => {

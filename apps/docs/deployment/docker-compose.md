@@ -148,7 +148,7 @@ RESIDENTIAL_PROXY_URL=http://user:pass@residential.example.com:8080
 ```
 
 The files explicitly pass every supported TRAWL runtime variable, including browser, screenshot,
-diagnostics, redirect, response-capture, STT, and ffmpeg tuning. Docker Compose uses `.env` for
+blocked-evidence, diagnostics, redirect, response-capture, STT, and ffmpeg tuning. Docker Compose uses `.env` for
 interpolation but does not otherwise expose arbitrary host variables to the container. Inspect the
 resolved values with `docker compose config` and see the
 [configuration migration guide](/deployment/configuration-migration) when upgrading.

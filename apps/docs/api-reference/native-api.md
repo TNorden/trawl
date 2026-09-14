@@ -49,8 +49,9 @@ interface ScrapeRequest {
 | `waitForSelector` | string | —    | CSS selector that also ends the settle window early. Only read alongside `captureResponses`                                                                                                 |
 | `blockedEvidence` | boolean | false | When no tier clears the challenge, attach the wall the last browser tier stopped at to the 500 body as `blockedEvidence`. It is never attached to a successful result — see the note below. The image rides along only when `screenshot` is also set |
 
-Captured response bodies, headers, console messages, and URLs can contain credentials,
-tokens, or personal data. Treat these opt-in diagnostic fields as sensitive output.
+Captured response bodies, headers, console messages, URLs, blocked-page HTML, and
+screenshots can contain credentials, tokens, or personal data. Treat these opt-in
+diagnostic fields as sensitive output: avoid logging or exposing them publicly.
 
 ## Response
 
@@ -125,21 +126,23 @@ interface BlockedEvidence {
   reason?: string              // identical to the matching timings[].reason
   url: string                  // where the browser stood, after any challenge redirects
   statusCode?: number
-  html?: string                // the wall's markup
+  html: string                 // the wall's markup
   htmlTruncated?: boolean      // html is the head of a page over BLOCKED_EVIDENCE_MAX_HTML_CHARS
   screenshot?: string          // base64 JPEG, only when `screenshot` was also requested
 }
 ```
 
-The wall reported is the one from the **deepest** browser tier that rendered one — a Tier 3
-wall is replaced by Tier 4's when Tier 4 also fails. Some failures have no page to hand
+The wall reported is the **last attempt from the deepest** browser tier that rendered one —
+a Tier 3 wall is replaced by Tier 4's when Tier 4 also fails, and a later proxy attempt
+replaces an earlier one in the same tier. Some failures have no page to hand
 back at all and carry no evidence: Tier 1 (a plain HTTP fetch, no browser), a tier that
 could not open a context or a page, a hard network failure (DNS, connection refused, TLS),
 an `about:neterror` page, an empty document, and a pool that was exhausted or still
 initializing. In those cases `timings` alone tells the story.
 
-Reading the wall never changes the outcome: a capture failure leaves `blockedEvidence` off
-the body and logs the reason, and the status code and `timings` are the same either way.
+Capturing the wall never changes the outcome: markup is truncated to its configured cap,
+the optional screenshot respects the remaining request budget, and a capture failure
+degrades or omits `blockedEvidence`. The status code and `timings` are unchanged either way.
 
 ## Examples
 

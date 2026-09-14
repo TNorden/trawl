@@ -104,13 +104,13 @@ export interface CapturedResponseEntry {
 // request asked for it — a blocked outcome is never dressed up as a successful result.
 export interface BlockedEvidence {
   tier: 2 | 3 | 4
-  status: TierResult["status"]
+  status: "blocked" | "timeout"
   // Same string as the matching `timings[].reason`, e.g. "cloudflare-persistent".
   reason?: string
   // Where the browser actually stood when it gave up, after any challenge redirects.
   url: string
   statusCode?: number
-  html?: string
+  html: string
   // The wall's markup exceeded BLOCKED_EVIDENCE_MAX_HTML_CHARS and `html` is the head of it.
   htmlTruncated?: boolean
   // Base64 JPEG, present only when the request also asked for a `screenshot`.

@@ -122,7 +122,12 @@ export async function runTier4(
           : resolution === "ip-blocked"
             ? "proxy-ip-blocked"
             : `${challengeType === "none" ? "cloudflare" : challengeType}-challenge-timeout`
-      await reportBlocked(page, capture.blockedEvidence, { tier: 4, status, reason, statusCode: mainResponse.status })
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        { tier: 4, status, reason, statusCode: mainResponse.status, html: peekHtml },
+        maxTimeout - (Date.now() - start),
+      )
       return { tier: 4, status, durationMs: Date.now() - start, reason }
     }
 
@@ -162,14 +167,19 @@ export async function runTier4(
     }
 
     if (isCloudflarePage(html, mainResponse.headers)) {
-      await reportBlocked(page, capture.blockedEvidence, {
-        tier: 4,
-        status: "blocked",
-        reason: "cloudflare-persistent",
-        statusCode: mainResponse.status,
-        html,
-        screenshot: shot,
-      })
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 4,
+          status: "blocked",
+          reason: "cloudflare-persistent",
+          statusCode: mainResponse.status,
+          html,
+          screenshot: shot,
+        },
+        maxTimeout - (Date.now() - start),
+      )
       return {
         tier: 4,
         status: "blocked",
@@ -179,14 +189,19 @@ export async function runTier4(
     }
 
     if (hasImpervaChallenge(html)) {
-      await reportBlocked(page, capture.blockedEvidence, {
-        tier: 4,
-        status: "blocked",
-        reason: "imperva-persistent",
-        statusCode: mainResponse.status,
-        html,
-        screenshot: shot,
-      })
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 4,
+          status: "blocked",
+          reason: "imperva-persistent",
+          statusCode: mainResponse.status,
+          html,
+          screenshot: shot,
+        },
+        maxTimeout - (Date.now() - start),
+      )
       return {
         tier: 4,
         status: "blocked",
@@ -196,14 +211,19 @@ export async function runTier4(
     }
 
     if (hasAkamaiChallenge(html)) {
-      await reportBlocked(page, capture.blockedEvidence, {
-        tier: 4,
-        status: "blocked",
-        reason: "akamai-persistent",
-        statusCode: mainResponse.status,
-        html,
-        screenshot: shot,
-      })
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 4,
+          status: "blocked",
+          reason: "akamai-persistent",
+          statusCode: mainResponse.status,
+          html,
+          screenshot: shot,
+        },
+        maxTimeout - (Date.now() - start),
+      )
       return {
         tier: 4,
         status: "blocked",
@@ -216,6 +236,19 @@ export async function runTier4(
       const pageTitle = await page.title().catch(() => "?")
       const pageUrl = page.url()
       console.log(`[tier4] ddos-guard-persistent: url="${pageUrl}" title="${pageTitle}" html=${html.length}b`)
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 4,
+          status: "blocked",
+          reason: "ddos-guard-persistent",
+          statusCode: mainResponse.status,
+          html,
+          screenshot: shot,
+        },
+        maxTimeout - (Date.now() - start),
+      )
       return { tier: 4, status: "blocked", durationMs: Date.now() - start, reason: "ddos-guard-persistent" }
     }
 
@@ -223,6 +256,19 @@ export async function runTier4(
       const pageTitle = await page.title().catch(() => "?")
       const pageUrl = page.url()
       console.log(`[tier4] datadome-persistent: url="${pageUrl}" title="${pageTitle}" html=${html.length}b`)
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 4,
+          status: "blocked",
+          reason: "datadome-persistent",
+          statusCode: mainResponse.status,
+          html,
+          screenshot: shot,
+        },
+        maxTimeout - (Date.now() - start),
+      )
       return {
         tier: 4,
         status: "blocked",
@@ -236,6 +282,19 @@ export async function runTier4(
       const pageTitle = await page.title().catch(() => "?")
       const pageUrl = page.url()
       console.log(`[tier4] duckduckgo-persistent: url="${pageUrl}" title="${pageTitle}" html=${html.length}b`)
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 4,
+          status: "blocked",
+          reason: "duckduckgo-persistent",
+          statusCode: mainResponse.status,
+          html,
+          screenshot: shot,
+        },
+        maxTimeout - (Date.now() - start),
+      )
       return {
         tier: 4,
         status: "blocked",
@@ -246,14 +305,19 @@ export async function runTier4(
 
     if (isBlocked(mainResponse.status, html)) {
       const reason = `http-${mainResponse.status}`
-      await reportBlocked(page, capture.blockedEvidence, {
-        tier: 4,
-        status: "blocked",
-        reason,
-        statusCode: mainResponse.status,
-        html,
-        screenshot: shot,
-      })
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 4,
+          status: "blocked",
+          reason,
+          statusCode: mainResponse.status,
+          html,
+          screenshot: shot,
+        },
+        maxTimeout - (Date.now() - start),
+      )
       return { tier: 4, status: "blocked", durationMs: Date.now() - start, reason }
     }
 
