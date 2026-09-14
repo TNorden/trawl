@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Optional MHTML archive: `mhtml: true` on `POST /scrape` returns a bounded `multipart/related` archive of successful HTML pages from browser tiers. The rendered document is followed by the safely readable stylesheets, scripts, images, and fonts observed during the normal page lifetime; omitted resources are reported inside the archive (#125).
 - Optional `blockedEvidence` diagnostics for terminal `/scrape` failures, returning bounded challenge-wall HTML and an optional screenshot without changing the HTTP 500 failure semantics. Evidence covers all browser challenge detectors, stays within the request budget, and is omitted unless explicitly requested (#124).
 - Publish a `-fonts` flavor of every release image (`:X.Y.Z-fonts`, `:latest-fonts`) with the complete spoofed Windows/macOS font bundles. Compact images now limit their runtime fingerprint pool to Linux when those bundles are absent, preventing rendered output and font probes from contradicting the advertised OS (#123).
 - Pluggable session cache driver selectable via `SESSION_CACHE_DRIVER` (`redis` default, bounded `memory` for single-instance deployments). The minimal Compose variant uses memory by default; `MEMORY_SESSION_CACHE_MAX_ENTRIES` limits it with LRU eviction (#117).

@@ -303,6 +303,33 @@ on. Capturing it never fails the scrape, and screenshots cannot extend the reque
 Challenge markup and screenshots can contain tokens, credentials or personal data; avoid
 logging, persisting or publicly exposing them unless that is explicitly intended.
 
+## MHTML Archives
+
+Only read when a request sets `mhtml: true` — see
+[Native API](/api-reference/native-api#mhtml-archives). Without it no subresource body is
+read. The archive keeps many small parts rather than a few large bodies, so it carries
+budgets of its own rather than sharing the response-body ones.
+
+| Variable | Default | Purpose |
+| --- | ---: | --- |
+| `MHTML_MAX_PARTS` | `200` | Subresources archived per page |
+| `MHTML_MAX_PART_BYTES` | `2097152` | Bytes per subresource; a larger one is omitted whole |
+| `MHTML_MAX_TOTAL_CHARS` | `8388608` | Maximum characters in the complete serialized archive, including the rendered root and MIME overhead |
+| `MHTML_MAX_INFLIGHT_READS` | `32` | Subresource bodies read at the same time; a burst past this is omitted rather than held |
+| `MHTML_MAX_OMISSION_RECORDS` | `100` | Omissions listed by URL in the archive; the rest are only counted |
+
+Bodies are read as they arrive, so a page whose subresources all complete at once is
+bounded by `MHTML_MAX_INFLIGHT_READS` and by the archive budget reserved from each valid
+`Content-Length`. Because the browser API returns only complete bodies, compressed and
+unknown-size responses are omitted before reading rather than trusted after allocation.
+When `captureResponses` selects the same resource, both outputs share one browser body read.
+
+A subresource is omitted rather than trimmed — a truncated stylesheet or image is corrupt,
+not partial. Every omission is counted in the archive's `X-Trawl-Omitted-Resources` header;
+up to `MHTML_MAX_OMISSION_RECORDS` are listed in its final part. Non-HTML responses, a root
+that cannot fit the total cap, or an assembly failure leave `mhtml` unset and never fail
+the scrape. Archives may contain credentials, personal data and executable target scripts,
+so treat them as sensitive untrusted output.
 
 ## CAPTCHA audio and media tools
 

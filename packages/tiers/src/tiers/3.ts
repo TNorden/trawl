@@ -23,7 +23,7 @@ import { trackMainDocumentResponses } from "../utils/mainResponse"
 import { isHardNetworkFailure } from "../utils/network"
 import { installOutboundPolicy, type OutboundUrlValidator } from "../utils/outboundPolicy"
 import { isProxyTransportFailure, normalizeProxyError, proxyResponseFailure } from "../utils/proxyFailure"
-import { captureResponse, isTextContentType } from "../utils/response"
+import { captureResponse, isHtmlContentType, isTextContentType } from "../utils/response"
 import type { RouteLike } from "../utils/sanitize"
 import { routeContinueOverrides } from "../utils/sanitize"
 
@@ -59,6 +59,7 @@ export interface Tier3Result extends TierResult {
   networkLogs?: NetworkLogEntry[]
   redirectChain?: string[]
   capturedResponses?: CapturedResponseEntry[]
+  mhtml?: string
 }
 
 export async function runTier3(
@@ -362,6 +363,7 @@ export async function runTier3(
       screenshot: shot,
       ...evidence,
       redirectChain: capture.redirectChain ? mainResponse.redirectChain : undefined,
+      mhtml: isHtmlContentType(captured.contentType) ? pageCapture.archive(page.url(), html) : undefined,
     }
   } catch (err) {
     return {

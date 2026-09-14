@@ -26,6 +26,7 @@ interface ScrapeRequest {
   settleTimeout?: number                 // ms to wait after load for a match, default 15000
   waitForSelector?: string               // CSS selector that ends the settle window early
   blockedEvidence?: boolean              // return the challenge wall on the error, default false
+  mhtml?: boolean                        // assemble an MHTML archive of the page, default false
 }
 ```
 
@@ -48,10 +49,11 @@ interface ScrapeRequest {
 | `settleTimeout` | number | 15000  | Milliseconds to hold the page open after load waiting for a match; ends early on the first captured body, on `waitForSelector`, or on network idle. Only read alongside `captureResponses`  |
 | `waitForSelector` | string | —    | CSS selector that also ends the settle window early. Only read alongside `captureResponses`                                                                                                 |
 | `blockedEvidence` | boolean | false | When no tier clears the challenge, attach the wall the last browser tier stopped at to the 500 body as `blockedEvidence`. It is never attached to a successful result — see the note below. The image rides along only when `screenshot` is also set |
+| `mhtml` | boolean | false        | Assemble a `multipart/related` MHTML archive of the page on the browser tiers (2–4) and return it as `mhtml`. An approximation of "Save as MHTML", not an engine snapshot — see the note below |
 
-Captured response bodies, headers, console messages, URLs, blocked-page HTML, and
-screenshots can contain credentials, tokens, or personal data. Treat these opt-in
-diagnostic fields as sensitive output: avoid logging or exposing them publicly.
+Captured response bodies, headers, console messages, URLs, blocked-page HTML, screenshots,
+and MHTML archives can contain credentials, tokens, personal data, or active scripts.
+Treat these opt-in fields as sensitive and open archives only when you trust their source.
 
 ## Response
 
@@ -73,6 +75,7 @@ interface ScrapeResult {
   networkLogs?: NetworkLogEntry[]  // resource timings, same presence rules as consoleLogs
   redirectChain?: string[]     // URLs the main document walked, same presence rules as consoleLogs
   capturedResponses?: CapturedResponseEntry[]  // matched response bodies, [] when nothing matched
+  mhtml?: string               // bounded multipart/related archive, only for requested successful HTML browser results
 }
 
 interface ConsoleLogEntry {
@@ -143,6 +146,29 @@ initializing. In those cases `timings` alone tells the story.
 Capturing the wall never changes the outcome: markup is truncated to its configured cap,
 the optional screenshot respects the remaining request budget, and a capture failure
 degrades or omits `blockedEvidence`. The status code and `timings` are unchanged either way.
+
+## MHTML Archives
+
+`mhtml: true` returns a single bounded `multipart/related` document for a successful HTML
+page: the rendered DOM first, then safely readable stylesheets, scripts, images and fonts
+that were observed loading. It is pure 7-bit
+ASCII with CRLF line endings, so it can be written straight to a `.mhtml` file, and every
+part carries a `Content-Location` so a reader can resolve it back to its URL.
+
+It is an **assembled approximation, not an engine snapshot.** Firefox exposes no
+equivalent of Chromium's `Page.captureSnapshot`, so the archive is built from what the
+response listener saw. Resources served from cache, fetched before the listener attached,
+compressed, missing a valid `Content-Length`, or refused by the browser are absent. These
+omissions and anything dropped for a size budget are counted in the
+`X-Trawl-Omitted-Resources` header and, up to the configured record cap, listed in a final
+`text/plain` part, so an archive that hits a cap is still a valid MHTML that says what it
+is missing. Non-HTML responses and roots too large for the total cap leave `mhtml` unset.
+The field is excluded from `timings` and tier telemetry. Bounds are tunable via `MHTML_*` — see
+[Configuration](/getting-started/configuration#mhtml-archives).
+
+MHTML may contain credentials, personal data and executable JavaScript from the target.
+Treat it as sensitive untrusted content; do not log it or open it outside an appropriate
+sandbox unless you trust the page.
 
 ## Examples
 
