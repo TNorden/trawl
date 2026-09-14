@@ -3,6 +3,7 @@ import { closeTemporaryContext, FINGERPRINT, newFreshContext } from "@trawl/brow
 import type { CapturedResponseEntry, ConsoleLogEntry, Cookie, NetworkLogEntry, TierResult } from "@trawl/types"
 import { capturePageScreenshot } from "../screenshot"
 import { solvePageCaptchas } from "../solvers"
+import { reportBlocked } from "../utils/blockedEvidence"
 import { attachPageCapture, type CaptureOptions } from "../utils/capture"
 import { routeChallengeWait } from "../utils/challengeRouter"
 import { snapshotChallengeCookies, toCookies } from "../utils/cookies"
@@ -139,17 +140,20 @@ export async function runTier3(
     )
 
     if (resolution !== "ok") {
-      return {
-        tier: 3,
-        status: resolution === "ip-blocked" || resolution === "captcha-required" ? "blocked" : "timeout",
-        durationMs: Date.now() - start,
-        reason:
-          resolution === "captcha-required"
-            ? `${challengeType}-captcha-required`
-            : resolution === "ip-blocked"
-              ? (DATACENTER_BLOCKED_REASONS[challengeType] ?? DEFAULT_DATACENTER_BLOCKED_REASON)
-              : `${challengeType === "none" ? "cloudflare" : challengeType}-challenge-timeout`,
-      }
+      const status = resolution === "ip-blocked" || resolution === "captcha-required" ? "blocked" : "timeout"
+      const reason =
+        resolution === "captcha-required"
+          ? `${challengeType}-captcha-required`
+          : resolution === "ip-blocked"
+            ? (DATACENTER_BLOCKED_REASONS[challengeType] ?? DEFAULT_DATACENTER_BLOCKED_REASON)
+            : `${challengeType === "none" ? "cloudflare" : challengeType}-challenge-timeout`
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        { tier: 3, status, reason, statusCode: mainResponse.status, html: peekHtml },
+        maxTimeout - (Date.now() - start),
+      )
+      return { tier: 3, status, durationMs: Date.now() - start, reason }
     }
 
     // challengeWait calls waitForLoadState('load') but the CF interstitial iframe can
@@ -200,6 +204,19 @@ export async function runTier3(
       const pageTitle = await page.title().catch(() => "?")
       const pageUrl = page.url()
       console.log(`[tier3] cloudflare-persistent: url="${pageUrl}" title="${pageTitle}" html=${html.length}b`)
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 3,
+          status: "blocked",
+          reason: "cloudflare-persistent",
+          statusCode: mainResponse.status,
+          html,
+          screenshot: shot,
+        },
+        maxTimeout - (Date.now() - start),
+      )
       return { tier: 3, status: "blocked", durationMs: Date.now() - start, reason: "cloudflare-persistent" }
     }
 
@@ -207,6 +224,19 @@ export async function runTier3(
       const pageTitle = await page.title().catch(() => "?")
       const pageUrl = page.url()
       console.log(`[tier3] imperva-persistent: url="${pageUrl}" title="${pageTitle}" html=${html.length}b`)
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 3,
+          status: "blocked",
+          reason: "imperva-persistent",
+          statusCode: mainResponse.status,
+          html,
+          screenshot: shot,
+        },
+        maxTimeout - (Date.now() - start),
+      )
       return { tier: 3, status: "blocked", durationMs: Date.now() - start, reason: "imperva-persistent" }
     }
 
@@ -214,6 +244,19 @@ export async function runTier3(
       const pageTitle = await page.title().catch(() => "?")
       const pageUrl = page.url()
       console.log(`[tier3] akamai-persistent: url="${pageUrl}" title="${pageTitle}" html=${html.length}b`)
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 3,
+          status: "blocked",
+          reason: "akamai-persistent",
+          statusCode: mainResponse.status,
+          html,
+          screenshot: shot,
+        },
+        maxTimeout - (Date.now() - start),
+      )
       return { tier: 3, status: "blocked", durationMs: Date.now() - start, reason: "akamai-persistent" }
     }
 
@@ -221,6 +264,19 @@ export async function runTier3(
       const pageTitle = await page.title().catch(() => "?")
       const pageUrl = page.url()
       console.log(`[tier3] ddos-guard-persistent: url="${pageUrl}" title="${pageTitle}" html=${html.length}b`)
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 3,
+          status: "blocked",
+          reason: "ddos-guard-persistent",
+          statusCode: mainResponse.status,
+          html,
+          screenshot: shot,
+        },
+        maxTimeout - (Date.now() - start),
+      )
       return { tier: 3, status: "blocked", durationMs: Date.now() - start, reason: "ddos-guard-persistent" }
     }
 
@@ -228,6 +284,19 @@ export async function runTier3(
       const pageTitle = await page.title().catch(() => "?")
       const pageUrl = page.url()
       console.log(`[tier3] datadome-persistent: url="${pageUrl}" title="${pageTitle}" html=${html.length}b`)
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 3,
+          status: "blocked",
+          reason: "datadome-persistent",
+          statusCode: mainResponse.status,
+          html,
+          screenshot: shot,
+        },
+        maxTimeout - (Date.now() - start),
+      )
       return {
         tier: 3,
         status: "blocked",
@@ -241,11 +310,38 @@ export async function runTier3(
       const pageTitle = await page.title().catch(() => "?")
       const pageUrl = page.url()
       console.log(`[tier3] duckduckgo-persistent: url="${pageUrl}" title="${pageTitle}" html=${html.length}b`)
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 3,
+          status: "blocked",
+          reason: "duckduckgo-persistent",
+          statusCode: mainResponse.status,
+          html,
+          screenshot: shot,
+        },
+        maxTimeout - (Date.now() - start),
+      )
       return { tier: 3, status: "blocked", durationMs: Date.now() - start, reason: "duckduckgo-persistent" }
     }
 
     if (isBlocked(mainResponse.status, html)) {
-      return { tier: 3, status: "blocked", durationMs: Date.now() - start, reason: `http-${mainResponse.status}` }
+      const reason = `http-${mainResponse.status}`
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 3,
+          status: "blocked",
+          reason,
+          statusCode: mainResponse.status,
+          html,
+          screenshot: shot,
+        },
+        maxTimeout - (Date.now() - start),
+      )
+      return { tier: 3, status: "blocked", durationMs: Date.now() - start, reason }
     }
 
     const cookies: Cookie[] = toCookies(await freshCtx.cookies())

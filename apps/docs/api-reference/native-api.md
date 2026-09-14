@@ -25,6 +25,7 @@ interface ScrapeRequest {
   captureResponses?: string[]            // URL patterns whose response bodies to capture, default none
   settleTimeout?: number                 // ms to wait after load for a match, default 15000
   waitForSelector?: string               // CSS selector that ends the settle window early
+  blockedEvidence?: boolean              // return the challenge wall on the error, default false
 }
 ```
 
@@ -46,9 +47,11 @@ interface ScrapeRequest {
 | `captureResponses` | string[] | — | URL patterns — a substring, or a glob matched against the whole URL when the pattern contains `*` or `?` — whose response bodies are returned as `capturedResponses` (browser tiers 2–4)     |
 | `settleTimeout` | number | 15000  | Milliseconds to hold the page open after load waiting for a match; ends early on the first captured body, on `waitForSelector`, or on network idle. Only read alongside `captureResponses`  |
 | `waitForSelector` | string | —    | CSS selector that also ends the settle window early. Only read alongside `captureResponses`                                                                                                 |
+| `blockedEvidence` | boolean | false | When no tier clears the challenge, attach the wall the last browser tier stopped at to the 500 body as `blockedEvidence`. It is never attached to a successful result — see the note below. The image rides along only when `screenshot` is also set |
 
-Captured response bodies, headers, console messages, and URLs can contain credentials,
-tokens, or personal data. Treat these opt-in diagnostic fields as sensitive output.
+Captured response bodies, headers, console messages, URLs, blocked-page HTML, and
+screenshots can contain credentials, tokens, or personal data. Treat these opt-in
+diagnostic fields as sensitive output: avoid logging or exposing them publicly.
 
 ## Response
 
@@ -107,6 +110,39 @@ interface TierResult {
   reason?: string
 }
 ```
+
+## Blocked-Outcome Evidence
+
+A scrape that runs a browser but never clears the challenge is still a failure: it answers
+**500**, and `ScrapeResult` never carries a challenge wall dressed up as content.
+
+`blockedEvidence: true` attaches the wall to that failure instead, so a caller can tell
+"blocked by a challenge" from "TRAWL broke" and can keep the page as evidence:
+
+```typescript
+interface BlockedEvidence {
+  tier: 2 | 3 | 4              // which browser tier rendered the wall
+  status: 'blocked' | 'timeout'
+  reason?: string              // identical to the matching timings[].reason
+  url: string                  // where the browser stood, after any challenge redirects
+  statusCode?: number
+  html: string                 // the wall's markup
+  htmlTruncated?: boolean      // html is the head of a page over BLOCKED_EVIDENCE_MAX_HTML_CHARS
+  screenshot?: string          // base64 JPEG, only when `screenshot` was also requested
+}
+```
+
+The wall reported is the **last attempt from the deepest** browser tier that rendered one —
+a Tier 3 wall is replaced by Tier 4's when Tier 4 also fails, and a later proxy attempt
+replaces an earlier one in the same tier. Some failures have no page to hand
+back at all and carry no evidence: Tier 1 (a plain HTTP fetch, no browser), a tier that
+could not open a context or a page, a hard network failure (DNS, connection refused, TLS),
+an `about:neterror` page, an empty document, and a pool that was exhausted or still
+initializing. In those cases `timings` alone tells the story.
+
+Capturing the wall never changes the outcome: markup is truncated to its configured cap,
+the optional screenshot respects the remaining request budget, and a capture failure
+degrades or omits `blockedEvidence`. The status code and `timings` are unchanged either way.
 
 ## Examples
 
@@ -217,5 +253,29 @@ alone — no need to check server logs:
     { "tier": 3, "status": "blocked", "durationMs": 2942, "reason": "http-403" },
     { "tier": 4, "status": "blocked", "durationMs": 7890, "reason": "http-403" }
   ]
+}
+```
+
+When the request set `blockedEvidence: true` and a browser tier rendered a challenge wall,
+the same body also carries that page — see
+[Blocked-Outcome Evidence](#blocked-outcome-evidence):
+
+```json
+{
+  "error": "All tiers exhausted. Last failure: cloudflare-persistent",
+  "timings": [
+    { "tier": 1, "status": "needs-js", "durationMs": 50, "reason": "cloudflare-challenge" },
+    { "tier": 3, "status": "blocked", "durationMs": 2942, "reason": "cloudflare-persistent" },
+    { "tier": 4, "status": "blocked", "durationMs": 7890, "reason": "cloudflare-persistent" }
+  ],
+  "blockedEvidence": {
+    "tier": 4,
+    "status": "blocked",
+    "reason": "cloudflare-persistent",
+    "url": "https://nowsecure.nl/",
+    "statusCode": 403,
+    "html": "<!DOCTYPE html><html><head><title>Just a moment...</title>...",
+    "screenshot": "/9j/4AAQSkZJRgABAQAA..."
+  }
 }
 ```

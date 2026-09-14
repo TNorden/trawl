@@ -1,7 +1,7 @@
 import type { CapturedResponseEntry, ConsoleLogEntry, NetworkLogEntry } from "@trawl/types"
 import type { ConsoleMessage, Page, Request } from "patchright"
+import type { BlockedEvidenceSink } from "./blockedEvidence"
 import { captureLimit } from "./captureConfig"
-
 import { attachResponseCapture, type ResponseCaptureOptions } from "./responseCapture"
 
 // Captured evidence lives in memory alongside a browser slot, so every dimension is
@@ -29,6 +29,9 @@ export interface CaptureOptions extends ResponseCaptureOptions {
   consoleLogs?: boolean
   networkLogs?: boolean
   redirectChain?: boolean
+  // Where a tier hands back the challenge wall it could not clear. Attaches no listener
+  // and buffers nothing — the tier reads the page once, on the branch that gives up.
+  blockedEvidence?: BlockedEvidenceSink
 }
 
 export interface CapturedPageEvidence {
