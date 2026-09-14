@@ -1,4 +1,5 @@
 import { PoolExhaustedError } from "@trawl/browser"
+import type { OrchestratorDeps } from "@trawl/tiers"
 import { RequestValidationError, ScrapeError, sanitizeHeaders, scrape } from "@trawl/tiers"
 import type { ScrapeRequest } from "@trawl/types"
 import { Elysia } from "elysia"
@@ -10,17 +11,17 @@ import { requestUrl, validateScrapeRequest } from "../validation"
 // Error mapping:
 //   503 — pool still initializing (native { error })
 //   429 — pool exhausted (FlareSolverr envelope; uniform with /v1)
-//   500 — other scrape exception (native { error })
-export function scrapeRoute() {
+//   500 — other scrape exception (native { error, timings, blockedEvidence })
+export function scrapeRoute(deps: () => OrchestratorDeps = getDeps, poolReady: () => unknown = getPool) {
   return new Elysia().post("/scrape", async ({ body, set }) => {
     try {
       validateScrapeRequest(body)
       const req: ScrapeRequest = body
-      if (!getPool()) {
+      if (!poolReady()) {
         set.status = 503
         return { error: "Browser pool initializing, retry in a few seconds" }
       }
-      return await scrape({ ...req, headers: sanitizeHeaders(req.headers) }, getDeps())
+      return await scrape({ ...req, headers: sanitizeHeaders(req.headers) }, deps())
     } catch (err) {
       if (err instanceof RequestValidationError) {
         set.status = err.statusCode
@@ -32,7 +33,7 @@ export function scrapeRoute() {
       }
       set.status = 500
       if (err instanceof ScrapeError) {
-        return { error: err.message, timings: err.timings }
+        return { error: err.message, timings: err.timings, blockedEvidence: err.blockedEvidence }
       }
       return { error: err instanceof Error ? err.message : String(err) }
     }

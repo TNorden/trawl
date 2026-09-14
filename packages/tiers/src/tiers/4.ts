@@ -3,6 +3,7 @@ import { closeTemporaryContext, FINGERPRINT, newFreshContext } from "@trawl/brow
 import type { CapturedResponseEntry, ConsoleLogEntry, Cookie, NetworkLogEntry, TierResult } from "@trawl/types"
 import { capturePageScreenshot } from "../screenshot"
 import { solvePageCaptchas } from "../solvers"
+import { reportBlocked } from "../utils/blockedEvidence"
 import { attachPageCapture, type CaptureOptions } from "../utils/capture"
 import { routeChallengeWait } from "../utils/challengeRouter"
 import { snapshotChallengeCookies, toCookies } from "../utils/cookies"
@@ -114,17 +115,15 @@ export async function runTier4(
     )
 
     if (resolution !== "ok") {
-      return {
-        tier: 4,
-        status: resolution === "ip-blocked" || resolution === "captcha-required" ? "blocked" : "timeout",
-        durationMs: Date.now() - start,
-        reason:
-          resolution === "captcha-required"
-            ? `${challengeType}-captcha-required`
-            : resolution === "ip-blocked"
-              ? "proxy-ip-blocked"
-              : `${challengeType === "none" ? "cloudflare" : challengeType}-challenge-timeout`,
-      }
+      const status = resolution === "ip-blocked" || resolution === "captcha-required" ? "blocked" : "timeout"
+      const reason =
+        resolution === "captcha-required"
+          ? `${challengeType}-captcha-required`
+          : resolution === "ip-blocked"
+            ? "proxy-ip-blocked"
+            : `${challengeType === "none" ? "cloudflare" : challengeType}-challenge-timeout`
+      await reportBlocked(page, capture.blockedEvidence, { tier: 4, status, reason, statusCode: mainResponse.status })
+      return { tier: 4, status, durationMs: Date.now() - start, reason }
     }
 
     await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {})
@@ -163,6 +162,14 @@ export async function runTier4(
     }
 
     if (isCloudflarePage(html, mainResponse.headers)) {
+      await reportBlocked(page, capture.blockedEvidence, {
+        tier: 4,
+        status: "blocked",
+        reason: "cloudflare-persistent",
+        statusCode: mainResponse.status,
+        html,
+        screenshot: shot,
+      })
       return {
         tier: 4,
         status: "blocked",
@@ -172,6 +179,14 @@ export async function runTier4(
     }
 
     if (hasImpervaChallenge(html)) {
+      await reportBlocked(page, capture.blockedEvidence, {
+        tier: 4,
+        status: "blocked",
+        reason: "imperva-persistent",
+        statusCode: mainResponse.status,
+        html,
+        screenshot: shot,
+      })
       return {
         tier: 4,
         status: "blocked",
@@ -181,6 +196,14 @@ export async function runTier4(
     }
 
     if (hasAkamaiChallenge(html)) {
+      await reportBlocked(page, capture.blockedEvidence, {
+        tier: 4,
+        status: "blocked",
+        reason: "akamai-persistent",
+        statusCode: mainResponse.status,
+        html,
+        screenshot: shot,
+      })
       return {
         tier: 4,
         status: "blocked",
@@ -222,7 +245,16 @@ export async function runTier4(
     }
 
     if (isBlocked(mainResponse.status, html)) {
-      return { tier: 4, status: "blocked", durationMs: Date.now() - start, reason: `http-${mainResponse.status}` }
+      const reason = `http-${mainResponse.status}`
+      await reportBlocked(page, capture.blockedEvidence, {
+        tier: 4,
+        status: "blocked",
+        reason,
+        statusCode: mainResponse.status,
+        html,
+        screenshot: shot,
+      })
+      return { tier: 4, status: "blocked", durationMs: Date.now() - start, reason }
     }
 
     const cookies: Cookie[] = toCookies(await proxyContext.cookies())

@@ -16,6 +16,7 @@ const MAX_BYTES = captureLimit(process.env.SCREENSHOT_MAX_BYTES, 4_000_000)
 export async function capturePageScreenshot(
   page: Page,
   budgetMs = Number.POSITIVE_INFINITY,
+  options: { settle?: boolean } = {},
 ): Promise<string | undefined> {
   const deadline = Date.now() + Math.max(budgetMs, 0)
   const remaining = (): number => Math.max(deadline - Date.now(), 0)
@@ -23,11 +24,14 @@ export async function capturePageScreenshot(
   try {
     // The HTML is read the moment a challenge clears, before late content (images,
     // fonts, lazy hydration) has painted. Give the page a bounded chance to settle,
-    // then a short beat for whatever paints after the last request.
+    // then a short beat for whatever paints after the last request. A caller imaging a
+    // page that will never settle (a challenge wall) opts out of the wait.
     if (remaining() <= 0) return undefined
-    await page.waitForLoadState("networkidle", { timeout: Math.min(SETTLE_MS, remaining()) }).catch(() => {})
-    const paintWaitMs = Math.min(300, remaining())
-    if (paintWaitMs > 0) await new Promise((r) => setTimeout(r, paintWaitMs))
+    if (options.settle !== false) {
+      await page.waitForLoadState("networkidle", { timeout: Math.min(SETTLE_MS, remaining()) }).catch(() => {})
+      const paintWaitMs = Math.min(300, remaining())
+      if (paintWaitMs > 0) await new Promise((r) => setTimeout(r, paintWaitMs))
+    }
 
     const captureTimeout = Math.min(CAPTURE_TIMEOUT_MS, remaining())
     if (captureTimeout <= 0) return undefined

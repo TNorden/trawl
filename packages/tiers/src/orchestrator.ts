@@ -1,6 +1,6 @@
 import type { BrowserHandle } from "@trawl/browser"
 import { FINGERPRINT, FINGERPRINT_POOL } from "@trawl/browser"
-import type { Cookie, ScrapeRequest, ScrapeResult, SessionData, TierResult } from "@trawl/types"
+import type { BlockedEvidence, Cookie, ScrapeRequest, ScrapeResult, SessionData, TierResult } from "@trawl/types"
 import { runTier1 } from "./tiers/1"
 import { runTier2 } from "./tiers/2"
 import { runTier3 } from "./tiers/3"
@@ -20,10 +20,15 @@ const MAX_PROXY_ATTEMPTS = 2
 // wasn't reaching anyone outside the orchestrator.
 export class ScrapeError extends Error {
   timings: TierResult[]
-  constructor(message: string, timings: TierResult[]) {
+  // The challenge wall the last browser tier stopped at, when the caller asked for it.
+  // It rides the error rather than a `blocked` ScrapeResult on purpose: a wall is not a
+  // scrape, and callers keyed on the success shape must never be handed one.
+  blockedEvidence?: BlockedEvidence
+  constructor(message: string, timings: TierResult[], blockedEvidence?: BlockedEvidence) {
     super(message)
     this.name = "ScrapeError"
     this.timings = timings
+    this.blockedEvidence = blockedEvidence
   }
 }
 
@@ -76,6 +81,10 @@ export async function scrape(
   const tier1Proxy = explicitProxy && /^https?:\/\//i.test(explicitProxy) ? explicitProxy : undefined
   const skipTier1ForProxy = Boolean(explicitProxy && !tier1Proxy)
 
+  // Evidence from the last browser tier that rendered a wall it could not clear. Kept out
+  // of `timings` — that stays the thin, machine-readable attempt history — and reached
+  // only via the thrown ScrapeError.
+  let blockedEvidence: BlockedEvidence | undefined
   const capture = {
     consoleLogs: req.consoleLogs,
     networkLogs: req.networkLogs,
@@ -83,6 +92,14 @@ export async function scrape(
     captureResponses: req.captureResponses,
     settleTimeout: req.settleTimeout,
     waitForSelector: req.waitForSelector,
+    blockedEvidence: req.blockedEvidence
+      ? {
+          screenshot: req.screenshot,
+          report: (evidence: BlockedEvidence) => {
+            blockedEvidence = evidence
+          },
+        }
+      : undefined,
   }
 
   const sanitizedHeaders = sanitizeHeaders(req.headers)
@@ -153,7 +170,7 @@ export async function scrape(
   }
 
   if (maxTier < 2) {
-    throw new ScrapeError("Max tier reached without success", timings)
+    throw new ScrapeError("Max tier reached without success", timings, blockedEvidence)
   }
 
   // Acquire browser for tiers 2-4
@@ -239,7 +256,7 @@ export async function scrape(
     }
 
     if (maxTier < 3) {
-      throw new ScrapeError("Max tier reached without success", timings)
+      throw new ScrapeError("Max tier reached without success", timings, blockedEvidence)
     }
 
     // Tier 3: fresh challenge solve. Proxy resolves from (priority order) a per-request
@@ -324,7 +341,7 @@ export async function scrape(
     }
 
     if (maxTier < 4) {
-      throw new ScrapeError("Max tier reached without success", timings)
+      throw new ScrapeError("Max tier reached without success", timings, blockedEvidence)
     }
 
     // Tier 4: residential proxy escalation — requires at least one residential proxy,
@@ -334,6 +351,7 @@ export async function scrape(
       throw new ScrapeError(
         `Tier 3 failed (${t3.reason ?? t3.status}). Set RESIDENTIAL_PROXY_URL (or pass a proxy per-request) to enable Tier 4 proxy escalation.`,
         timings,
+        blockedEvidence,
       )
     }
 
@@ -410,7 +428,7 @@ export async function scrape(
       }
     }
 
-    throw new ScrapeError(`All tiers exhausted. Last failure: ${t4.reason ?? t4.status}`, timings)
+    throw new ScrapeError(`All tiers exhausted. Last failure: ${t4.reason ?? t4.status}`, timings, blockedEvidence)
   } finally {
     if (!handleReleased) deps.releaseBrowser(handle)
   }

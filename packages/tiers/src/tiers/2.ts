@@ -9,6 +9,7 @@ import type {
 } from "@trawl/types"
 import { capturePageScreenshot } from "../screenshot"
 import { solvePageCaptchas } from "../solvers"
+import { reportBlocked } from "../utils/blockedEvidence"
 import { attachPageCapture, type CaptureOptions } from "../utils/capture"
 import { normalizeSameSite, toCookies } from "../utils/cookies"
 import {
@@ -105,12 +106,26 @@ export async function runTier2(
     }
 
     if (isCloudflarePage(html, mainResponse.headers)) {
+      await reportBlocked(page, capture.blockedEvidence, {
+        tier: 2,
+        status: "blocked",
+        reason: "session-expired",
+        statusCode: mainResponse.status,
+        html,
+      })
       return { tier: 2, status: "blocked", durationMs: Date.now() - start, reason: "session-expired" }
     }
 
     // A cached session that lands back on Akamai's interstitial is stale — force a
     // fresh Tier-3 solve rather than returning the ~2KB challenge stub as content.
     if (hasAkamaiChallenge(html)) {
+      await reportBlocked(page, capture.blockedEvidence, {
+        tier: 2,
+        status: "blocked",
+        reason: "akamai-session-expired",
+        statusCode: mainResponse.status,
+        html,
+      })
       return { tier: 2, status: "blocked", durationMs: Date.now() - start, reason: "akamai-session-expired" }
     }
 
@@ -127,7 +142,15 @@ export async function runTier2(
     }
 
     if (isBlocked(mainResponse.status, html)) {
-      return { tier: 2, status: "blocked", durationMs: Date.now() - start, reason: `http-${mainResponse.status}` }
+      const reason = `http-${mainResponse.status}`
+      await reportBlocked(page, capture.blockedEvidence, {
+        tier: 2,
+        status: "blocked",
+        reason,
+        statusCode: mainResponse.status,
+        html,
+      })
+      return { tier: 2, status: "blocked", durationMs: Date.now() - start, reason }
     }
 
     // Attempt to solve any embedded captcha widgets (Turnstile, reCAPTCHA, hCaptcha).
@@ -150,6 +173,14 @@ export async function runTier2(
 
     const finalHtml = await page.content()
     if (isCloudflarePage(finalHtml, mainResponse.headers)) {
+      await reportBlocked(page, capture.blockedEvidence, {
+        tier: 2,
+        status: "blocked",
+        reason: "session-expired",
+        statusCode: mainResponse.status,
+        html: finalHtml,
+        screenshot: shot,
+      })
       return { tier: 2, status: "blocked", durationMs: Date.now() - start, reason: "session-expired" }
     }
 
