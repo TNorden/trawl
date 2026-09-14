@@ -119,8 +119,10 @@ TRAWL and Redis.
 | `BROWSER_ACQUIRE_TIMEOUT_MS`     | `15000`              | How long `acquire()` polls for a free browser before returning HTTP 429 |
 | `BROWSER_RECYCLE_AFTER_CONTEXTS` | `8`                  | Rolling-replace after this many Tier 3/4 contexts; `0` disables it      |
 | `BROWSER_MAX_CONTENT_PROCESSES`  | `2`                  | Maximum Firefox content processes per browser                           |
+| `SESSION_CACHE_DRIVER`           | `redis`              | Cache backend; minimal Compose defaults to `memory`                      |
 | `REDIS_URL`                      | `redis://redis:6379` | Redis connection (set automatically in compose)                         |
 | `REDIS_SESSION_TTL_SECONDS`      | `3600`               | Lifetime of cached sessions                                             |
+| `MEMORY_SESSION_CACHE_MAX_ENTRIES` | `1000`             | Maximum LRU-bounded entries for the memory driver                       |
 | `REDIS_CONNECT_TIMEOUT_MS`       | `5000`               | Maximum time for each Redis connection attempt                          |
 | `REDIS_RETRY_DELAY_MS`           | `5000`               | Background reconnect delay; `0` disables retry                          |
 | `PROXY_URL`                      | —                    | Optional Tier 3 datacenter proxy or pool                                |
@@ -152,9 +154,9 @@ resolved values with `docker compose config` and see the
 [configuration migration guide](/deployment/configuration-migration) when upgrading.
 
 There are two deliberate routing exceptions. `PORT` changes the published host port while the API
-continues listening on container port `8191`. The Redis-backed variants always use their bundled
-`redis` service; the minimal variant accepts an optional external `REDIS_URL` and otherwise disables
-the cache.
+continues listening on container port `8191`. The Redis-backed variants select their bundled
+`redis` service by default. The minimal variant defaults to the bounded in-memory cache; set
+`SESSION_CACHE_DRIVER=redis` with an external `REDIS_URL` to use Redis instead.
 
 For supported endpoint formats, pools, and mounted list files, see
 [Configuration → Proxies](/getting-started/configuration#proxies).

@@ -11,6 +11,7 @@ import {
   hasAkamaiChallenge,
   hasDataDomeChallenge,
   hasDdosGuardChallenge,
+  hasDuckDuckGoChallenge,
   hasImpervaChallenge,
   isBlocked,
   isBrowserErrorPage,
@@ -234,6 +235,13 @@ export async function runTier3(
         reason: "datadome-persistent",
         challenge: "datadome",
       }
+    }
+
+    if (hasDuckDuckGoChallenge(html)) {
+      const pageTitle = await page.title().catch(() => "?")
+      const pageUrl = page.url()
+      console.log(`[tier3] duckduckgo-persistent: url="${pageUrl}" title="${pageTitle}" html=${html.length}b`)
+      return { tier: 3, status: "blocked", durationMs: Date.now() - start, reason: "duckduckgo-persistent" }
     }
 
     if (isBlocked(mainResponse.status, html)) {

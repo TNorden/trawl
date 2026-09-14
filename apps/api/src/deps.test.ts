@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test"
 import type { BrowserPool } from "@trawl/browser"
 import type { BrowserHandle } from "@trawl/types"
-import { getDeps, getHeadfulPool, initPool, SessionCacheRecovery, shutdownPools } from "./deps"
+import {
+  createSessionCacheRecovery,
+  getDeps,
+  getHeadfulPool,
+  initPool,
+  SessionCacheRecovery,
+  shutdownPools,
+} from "./deps"
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -84,6 +91,39 @@ describe("browser pool dependencies", () => {
 })
 
 describe("session cache recovery", () => {
+  test("creates a working memory cache without a Redis URL", async () => {
+    const recovery = createSessionCacheRecovery({
+      driver: "memory",
+      ttlSeconds: 60,
+      memoryMaxEntries: 1,
+      redisConnectTimeoutMs: 10,
+      redisRetryDelayMs: 10,
+    })
+    expect(recovery).toBeDefined()
+    await recovery?.start()
+
+    const data = { cookies: [], userAgent: "test", savedAt: Date.now() }
+    await recovery?.current()?.save("first.test", data)
+    await recovery?.current()?.save("second.test", data)
+    expect(await recovery?.current()?.load("first.test")).toBeUndefined()
+    expect(await recovery?.current()?.load("second.test")).toEqual(data)
+
+    await recovery?.stop()
+    expect(recovery?.current()).toBeUndefined()
+  })
+
+  test("keeps Redis cache disabled when the default driver has no URL", () => {
+    expect(
+      createSessionCacheRecovery({
+        driver: "redis",
+        ttlSeconds: 60,
+        memoryMaxEntries: 100,
+        redisConnectTimeoutMs: 10,
+        redisRetryDelayMs: 10,
+      }),
+    ).toBeUndefined()
+  })
+
   test("enables the cache after a failed initial connection without restarting", async () => {
     let attempts = 0
     const closed: number[] = []

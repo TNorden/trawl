@@ -9,6 +9,9 @@ export type ChallengeType =
   | "ddos-guard"
   | "aws-waf"
   | "datadome"
+  | "duckduckgo"
+  | "altcha"
+  | "friendly-captcha"
   | "none"
 
 export function hasCloudflareChallengeHeader(headers: Record<string, string> = {}): boolean {
@@ -35,6 +38,8 @@ export function getAwsWafAction(
 export function isCloudflarePage(html: string, headers: Record<string, string>): boolean {
   if (hasCloudflareChallengeHeader(headers)) return true
   if (hasDdosGuardChallenge(html)) return false
+  if (hasDuckDuckGoChallenge(html)) return false
+  if (hasAltcha(html) || hasFriendlyCaptcha(html)) return false
   if (/<title>[^<]*(just a moment|please wait|checking|attention required)[^<]*<\/title>/i.test(html)) return true
   if (/checking your browser/i.test(html)) return true
   if (/enable javascript and cookies to continue/i.test(html)) return true
@@ -98,6 +103,24 @@ export function hasCapChallenge(html: string): boolean {
   return /cap-widget|trycap\.dev|data-cap-/i.test(html)
 }
 
+// ALTCHA is a Web Component. Restrict static detection to the component or its
+// generated form field; the brand name and generic PoW wording also occur in
+// ordinary articles and integration documentation.
+export function hasAltcha(html: string): boolean {
+  return /<altcha-widget\b/i.test(html) || /<input\b[^>]*\bname\s*=\s*["']altcha["']/i.test(html)
+}
+
+// Friendly Captcha v1/v2 mount under .frc-captcha and publish one of these two
+// managed form fields. A provider iframe is only meaningful when its URL is a
+// widget path; a bare friendlycaptcha/frcapi mention is not enough.
+export function hasFriendlyCaptcha(html: string): boolean {
+  if (/<[^>]+\bclass\s*=\s*["'][^"']*\bfrc-captcha\b[^"']*["']/i.test(html)) return true
+  if (/<input\b[^>]*\bname\s*=\s*["']frc-captcha-(?:solution|response)["']/i.test(html)) return true
+  return /<iframe\b[^>]*\bsrc\s*=\s*["'][^"']*(?:frcapi\.com|friendlycaptcha\.[^/"']+)[^"']*\/(?:captcha\/)?widget\b/i.test(
+    html,
+  )
+}
+
 // Imperva/Incapsula WAF challenge — sensor-based (reese84, current) or legacy (___utmvc).
 // Both are produced by an obfuscated in-page JS challenge; no need to understand the
 // obfuscation, just detect the challenge page and wait for the sensor cookie (see impervaWait.ts).
@@ -137,6 +160,22 @@ export function hasDdosGuardChallenge(html: string, _headers: Record<string, str
   if (/id=["']ddg-l10n-(title|description)["']|id=["']ddg-img-loading["']/i.test(html)) return true
   if (/check\.ddos-guard\.net\/check\.js/i.test(html)) return true
   return false
+}
+
+// DuckDuckGo's anomaly wall is an interactive image CAPTCHA. Require either its
+// provider-owned endpoint or all of the structural fallback markers: each generic
+// marker can occur independently in application pages and test fixtures.
+export function hasDuckDuckGoChallenge(html: string, _headers: Record<string, string> = {}): boolean {
+  const providerEndpoint = /(?:action|src)=["'](?:https?:)?\/\/(?:html\.)?duckduckgo\.com\/anomaly\.js(?:[?"'])/i.test(
+    html,
+  )
+  if (providerEndpoint) return true
+
+  const anomalyEndpoint = /(?:action|src)=["'][^"']*\/anomaly\.js(?:[?"'])/i.test(html)
+  const challengeForm = /id=["']challenge-form["']/i.test(html)
+  const anomalyModal =
+    /data-testid=["']anomaly-modal["']/i.test(html) || /class=["'][^"']*\banomaly-modal(?:\b|__)/i.test(html)
+  return anomalyEndpoint && challengeForm && anomalyModal
 }
 
 // AWS WAF JavaScript challenge — the interstitial page that loads challenge.js to
@@ -220,6 +259,9 @@ export function detectChallengeType(
   if (hasDataDomeChallenge(html, headers, status)) return "datadome"
   if (hasTurnstile(html)) return "cloudflare-turnstile"
   if (hasDdosGuardChallenge(html, headers)) return "ddos-guard"
+  if (hasDuckDuckGoChallenge(html, headers)) return "duckduckgo"
+  if (hasAltcha(html)) return "altcha"
+  if (hasFriendlyCaptcha(html)) return "friendly-captcha"
   if (isCloudflarePage(html, headers)) return "cloudflare-interstitial"
   if (hasImpervaChallenge(html, headers)) return "imperva"
   if (hasAkamaiChallenge(html, headers)) return "akamai"
@@ -236,6 +278,7 @@ export function isBlocked(status: number, html: string): boolean {
   if (hasAkamaiChallenge(html)) return true
   if (hasDdosGuardChallenge(html)) return true
   if (hasDataDomeChallenge(html)) return true
+  if (hasDuckDuckGoChallenge(html)) return true
   return false
 }
 
@@ -245,7 +288,10 @@ export function needsJs(html: string, headers: Record<string, string>): boolean 
     hasImpervaChallenge(html, headers) ||
     hasAkamaiChallenge(html, headers) ||
     hasDdosGuardChallenge(html, headers) ||
-    hasDataDomeChallenge(html, headers)
+    hasDataDomeChallenge(html, headers) ||
+    hasDuckDuckGoChallenge(html, headers) ||
+    hasAltcha(html) ||
+    hasFriendlyCaptcha(html)
   )
 }
 
@@ -266,9 +312,15 @@ const LEAN_BODY_THRESHOLDS: Partial<Record<ChallengeType, number>> = {
 export function isChallengeWall(status: number, bodyLength: number, challengeType: ChallengeType): boolean {
   if (challengeType === "none") return false
   if (status === 403 || status === 503) return true
-  // These three never serve real content alongside their wall, so the type alone settles
+  // These four never serve real content alongside their wall, so the type alone settles
   // it. For datadome that leans on the header invariant documented in getDataDomeAction().
-  if (challengeType === "akamai" || challengeType === "aws-waf" || challengeType === "datadome") return true
+  if (
+    challengeType === "akamai" ||
+    challengeType === "aws-waf" ||
+    challengeType === "datadome" ||
+    challengeType === "duckduckgo"
+  )
+    return true
   const threshold = LEAN_BODY_THRESHOLDS[challengeType]
   if (threshold !== undefined && bodyLength < threshold) return true
   return false

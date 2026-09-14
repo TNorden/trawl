@@ -8,7 +8,7 @@
 ## **Welcome** to <a href="https://trawl.germondai.com" target="_blank">**TRAWL**</a>! 👋
 
 Self-hosted web scraping engine with best-effort JS challenge and CAPTCHA solving.\
-Dedicated flows for Cloudflare, Akamai Bot Manager, and Imperva/Incapsula (best effort), plus Turnstile, reCAPTCHA, hCaptcha, and GeeTest.\
+Dedicated flows for Cloudflare, Akamai Bot Manager, and Imperva/Incapsula (best effort), plus Turnstile, reCAPTCHA, hCaptcha, GeeTest, ALTCHA, and Friendly Captcha.\
 Much faster and more reliable FlareSolverr & Byparr alternative and drop-in replacement for your \*arr stack.
 
 ## Features
@@ -17,7 +17,7 @@ Much faster and more reliable FlareSolverr & Byparr alternative and drop-in repl
 - **4-tier execution** - plain HTTP fetch → cached browser session → fresh challenge solve → residential proxy
 - **Challenge-aware HTTP/HTTPS proxy** - direct forwarding for normal traffic, automatic tier escalation for detected walls, plus WebSockets, binary bodies, and Range/206 support
 - **Multi-WAF handling** - dedicated Cloudflare, Akamai Bot Manager, and Imperva/Incapsula detection and browser flows
-- **Native captcha solving** - CF Turnstile/Interstitial, reCAPTCHA v2 (free STT), hCaptcha, GeeTest v4 Slide
+- **Native captcha solving** - CF Turnstile/Interstitial, reCAPTCHA v2 (free STT), hCaptcha, GeeTest v4 Slide, ALTCHA, and Friendly Captcha v1/v2
 - **Camoufox Firefox** - fingerprint-patched at the C++/Juggler level to reduce automation signals
 - **Session cache** - solved cookies and browser identity stored in Redis; accepted sessions can avoid a fresh solve
 - **FlareSolverr compatible** - works with Prowlarr, Jackett, Sonarr, and the full \*arr ecosystem out of the box
@@ -400,8 +400,10 @@ for pool and mounted-file examples.
 | `BROWSER_ACQUIRE_TIMEOUT_MS`     | `15000`                  | How long `acquire()` polls for a free browser before HTTP 429 is returned           |
 | `BROWSER_RECYCLE_AFTER_CONTEXTS` | `8`                      | Rolling-replace after this many Tier 3/4 contexts; set `0` to disable               |
 | `BROWSER_MAX_CONTENT_PROCESSES`  | `2`                      | Cap Firefox content processes per browser (`dom.ipc.processCount`); lowers RAM/CPU  |
-| `REDIS_SESSION_TTL_SECONDS`      | `3600`                   | Redis session cache TTL (seconds)                                                   |
-| `REDIS_URL`                      | —                        | Redis connection string; empty or unset disables the session cache                   |
+| `SESSION_CACHE_DRIVER`           | `redis`                  | Session cache backend: `redis` or single-process `memory`                           |
+| `REDIS_SESSION_TTL_SECONDS`      | `3600`                   | Redis or in-memory session TTL (seconds)                                            |
+| `MEMORY_SESSION_CACHE_MAX_ENTRIES` | `1000`                 | Maximum LRU-bounded entries for the memory driver                                   |
+| `REDIS_URL`                      | —                        | Redis connection string; empty or unset disables the Redis cache                     |
 | `REDIS_CONNECT_TIMEOUT_MS`       | `5000`                   | Maximum time for each Redis connection attempt                                      |
 | `REDIS_RETRY_DELAY_MS`           | `5000`                   | Delay before reconnecting after startup failure; `0` disables retry                 |
 | `PROXY_URL`                      | —                        | Optional Tier 3 HTTP or SOCKS5 proxy, or comma-separated pool                       |
