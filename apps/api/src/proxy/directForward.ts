@@ -346,7 +346,7 @@ async function readHttpResponse(
 
   // Challenge detection on the buffered body. Bounded preview keeps this cheap.
   const previewText = decodeForInspection(body.subarray(0, offset), headers["content-encoding"])
-  const challengeType = detectChallengeType(previewText, headers)
+  const challengeType = detectChallengeType(previewText, headers, status)
   const challengeDetected = !skipChallengeDetection && isChallengeWall(status, body.length, challengeType)
 
   return {

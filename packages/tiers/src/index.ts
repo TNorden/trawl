@@ -1,13 +1,6 @@
 export type { AcquireOptions, OrchestratorDeps } from "./orchestrator"
 export { ScrapeError, scrape } from "./orchestrator"
-export {
-  hasAltchaWidget,
-  hasFriendlyCaptchaWidget,
-  type SolveResult,
-  solveAltcha,
-  solveFriendlyCaptcha,
-  solvePageCaptchas,
-} from "./solvers"
+export { type SolveResult, solvePageCaptchas } from "./solvers"
 export { runTier1, type Tier1Result } from "./tiers/1"
 export { runTier2, type Tier2Result } from "./tiers/2"
 export { runTier3, type Tier3Result } from "./tiers/3"
@@ -19,14 +12,16 @@ export {
   getAwsWafAction,
   getDataDomeAction,
   hasAkamaiChallenge,
+  hasAltcha,
   hasAwsWafCaptcha,
   hasAwsWafChallenge,
   hasDataDomeCaptcha,
   hasDataDomeChallenge,
   hasDdosGuardChallenge,
+  hasDuckDuckGoChallenge,
+  hasFriendlyCaptcha,
   hasHcaptcha,
   hasImpervaChallenge,
-  hasPowChallenge,
   hasRecaptcha,
   hasTurnstile,
   isBlocked,
@@ -35,7 +30,6 @@ export {
   isCloudflarePage,
   needsJs,
 } from "./utils/detect"
-export { waitForPowResolution } from "./utils/powWait"
 export { normalizeProxy, ProxyPool } from "./utils/proxyRotator"
 export {
   isValidMethod,

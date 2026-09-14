@@ -7,7 +7,6 @@ import { type DataDomeResolution, waitForDataDomeResolution } from "./datadomeWa
 import { waitForDdosGuardResolution } from "./ddosGuardWait"
 import { type ChallengeType, detectChallengeType, getAwsWafAction, getDataDomeAction, hasAwsWafCaptcha } from "./detect"
 import { waitForImpervaResolution } from "./impervaWait"
-import { waitForPowResolution } from "./powWait"
 
 type Resolution = AwsWafResolution | DataDomeResolution
 type Waiter = (page: Page, timeoutMs: number, originalUrl?: string) => Promise<Resolution>
@@ -22,7 +21,6 @@ interface ChallengeWaiters {
   imperva: Waiter
   akamai: Waiter
   ddosGuard: Waiter
-  pow: Waiter
   awsWaf: (
     page: Page,
     timeoutMs: number,
@@ -42,7 +40,6 @@ const defaultWaiters: ChallengeWaiters = {
   imperva: waitForImpervaResolution,
   akamai: waitForAkamaiResolution,
   ddosGuard: waitForDdosGuardResolution,
-  pow: waitForPowResolution,
   awsWaf: (page, timeoutMs, originalUrl, initialTokens) =>
     waitForAwsWafResolution(page, timeoutMs, originalUrl, { initialTokens }),
   dataDome: (page, timeoutMs, originalUrl, initialCookies) =>
@@ -63,6 +60,14 @@ export async function routeChallengeWait(
   if (getAwsWafAction(status, headers) === "captcha" || hasAwsWafCaptcha(html)) {
     return { challengeType: "aws-waf", resolution: "captcha-required" }
   }
+  // DuckDuckGo's anomaly wall is an interactive image puzzle, not a silent
+  // challenge that resolves by waiting or by attempting Cloudflare controls.
+  if (challengeType === "duckduckgo") return { challengeType, resolution: "captcha-required" }
+  // Provider widgets are solved after routing by solvePageCaptchas(). They are
+  // page content, not interstitial walls, so never send them through a WAF waiter.
+  if (challengeType === "altcha" || challengeType === "friendly-captcha") {
+    return { challengeType, resolution: "ok" }
+  }
   // Neither the DataDome slider nor its hard block resolves by waiting, so they never reach
   // a waiter: report them straight away and let the tier escalate.
   if (challengeType === "datadome") {
@@ -77,12 +82,10 @@ export async function routeChallengeWait(
         ? await waiters.akamai(page, timeoutMs, originalUrl)
         : challengeType === "ddos-guard"
           ? await waiters.ddosGuard(page, timeoutMs, originalUrl)
-          : challengeType === "pow"
-            ? await waiters.pow(page, timeoutMs, originalUrl)
-            : challengeType === "aws-waf"
-              ? await waiters.awsWaf(page, timeoutMs, originalUrl, initialCookies?.awsWaf)
-              : challengeType === "datadome"
-                ? await waiters.dataDome(page, timeoutMs, originalUrl, initialCookies?.dataDome)
-                : await waiters.cloudflare(page, timeoutMs, originalUrl, () => headers)
+          : challengeType === "aws-waf"
+            ? await waiters.awsWaf(page, timeoutMs, originalUrl, initialCookies?.awsWaf)
+            : challengeType === "datadome"
+              ? await waiters.dataDome(page, timeoutMs, originalUrl, initialCookies?.dataDome)
+              : await waiters.cloudflare(page, timeoutMs, originalUrl, () => headers)
   return { challengeType, resolution }
 }

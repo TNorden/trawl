@@ -4,141 +4,176 @@ import { hasAltchaWidget, hasFriendlyCaptchaWidget, solveAltcha, solveFriendlyCa
 import { runTier1 } from "../src/tiers/1"
 import {
   detectChallengeType,
-  hasPowChallenge,
+  hasAltcha,
+  hasFriendlyCaptcha,
   isBlocked,
   isChallengeWall,
   isCloudflarePage,
   needsJs,
 } from "../src/utils/detect"
-import { waitForPowResolution } from "../src/utils/powWait"
-import {
-  ALTCHA_INTERSTITIAL_HTML,
-  ALTCHA_WIDGET_HTML,
-  FRIENDLY_CAPTCHA_WIDGET_HTML,
-  POW_INTERSTITIAL_HTML,
-} from "./fixtures/pow"
+import { ALTCHA_WIDGET_HTML, FRIENDLY_CAPTCHA_V2_HTML, FRIENDLY_CAPTCHA_WIDGET_HTML } from "./fixtures/pow"
 
-describe("Proof-of-Work (PoW) detection", () => {
-  test("detects PoW interstitial markers in HTML", () => {
-    expect(hasPowChallenge(POW_INTERSTITIAL_HTML)).toBe(true)
-    expect(detectChallengeType(POW_INTERSTITIAL_HTML)).toBe("pow")
-    expect(isCloudflarePage(POW_INTERSTITIAL_HTML, {})).toBe(false)
-    expect(needsJs(POW_INTERSTITIAL_HTML, {})).toBe(true)
-    expect(isBlocked(200, POW_INTERSTITIAL_HTML)).toBe(true)
-    expect(isChallengeWall(200, POW_INTERSTITIAL_HTML.length, "pow")).toBe(true)
+describe("provider-specific proof-of-work widget detection", () => {
+  test("classifies ALTCHA as an embedded JS widget, not a blocking wall", () => {
+    expect(hasAltcha(ALTCHA_WIDGET_HTML)).toBe(true)
+    expect(detectChallengeType(ALTCHA_WIDGET_HTML)).toBe("altcha")
+    expect(needsJs(ALTCHA_WIDGET_HTML, {})).toBe(true)
+    expect(isCloudflarePage(ALTCHA_WIDGET_HTML, {})).toBe(false)
+    expect(isBlocked(200, ALTCHA_WIDGET_HTML)).toBe(false)
+    expect(isChallengeWall(200, ALTCHA_WIDGET_HTML.length, "altcha")).toBe(false)
   })
 
-  test("detects Altcha gate interstitial in HTML", () => {
-    expect(hasPowChallenge(ALTCHA_INTERSTITIAL_HTML)).toBe(true)
-    expect(detectChallengeType(ALTCHA_INTERSTITIAL_HTML)).toBe("pow")
-    expect(needsJs(ALTCHA_INTERSTITIAL_HTML, {})).toBe(true)
-    expect(isBlocked(403, ALTCHA_INTERSTITIAL_HTML)).toBe(true)
+  test("classifies Friendly Captcha v1 and v2 as embedded JS widgets", () => {
+    for (const html of [FRIENDLY_CAPTCHA_WIDGET_HTML, FRIENDLY_CAPTCHA_V2_HTML]) {
+      expect(hasFriendlyCaptcha(html)).toBe(true)
+      expect(detectChallengeType(html)).toBe("friendly-captcha")
+      expect(needsJs(html, {})).toBe(true)
+      expect(isBlocked(200, html)).toBe(false)
+      expect(isChallengeWall(200, html.length, "friendly-captcha")).toBe(false)
+    }
   })
 
-  test("detects PoW from response headers", () => {
-    expect(hasPowChallenge("", { "X-PoW-Challenge": "required" })).toBe(true)
-    expect(hasPowChallenge("", { "X-Altcha-Challenge": "pending" })).toBe(true)
-    expect(detectChallengeType("", { "x-pow-challenge": "true" })).toBe("pow")
-  })
-
-  test("lets authoritative Cloudflare challenge header win", () => {
+  test("keeps an authoritative Cloudflare header ahead of embedded widget markers", () => {
     const headers = { "CF-Mitigated": "Challenge" }
-    expect(detectChallengeType(POW_INTERSTITIAL_HTML, headers)).toBe("cloudflare-interstitial")
-    expect(isCloudflarePage(POW_INTERSTITIAL_HTML, headers)).toBe(true)
+    expect(detectChallengeType(ALTCHA_WIDGET_HTML, headers)).toBe("cloudflare-interstitial")
+    expect(isCloudflarePage(ALTCHA_WIDGET_HTML, headers)).toBe(true)
   })
 
-  test("does not false-positive on ordinary pages", () => {
-    const normalHtml = "<!DOCTYPE html><html><body><h1>Welcome to our site</h1></body></html>"
-    expect(hasPowChallenge(normalHtml)).toBe(false)
-    expect(detectChallengeType(normalHtml)).toBe("none")
-    expect(needsJs(normalHtml, {})).toBe(false)
-    expect(isBlocked(200, normalHtml)).toBe(false)
-  })
-})
-
-describe("In-page PoW widget solvers", () => {
-  test("fixtures define valid widget structures", () => {
-    expect(/altcha-widget|\.altcha/.test(ALTCHA_WIDGET_HTML)).toBe(true)
-    expect(/frc-captcha|friendly-captcha/.test(FRIENDLY_CAPTCHA_WIDGET_HTML)).toBe(true)
-  })
-
-  test("hasAltchaWidget detects widget presence via evaluate", async () => {
-    const mockPage = {
-      evaluate: async () => true,
-    } as unknown as Page
-
-    expect(await hasAltchaWidget(mockPage, 100)).toBe(true)
-  })
-
-  test("hasFriendlyCaptchaWidget detects widget presence via evaluate", async () => {
-    const mockPage = {
-      evaluate: async () => true,
-    } as unknown as Page
-
-    expect(await hasFriendlyCaptchaWidget(mockPage, 100)).toBe(true)
-  })
-
-  test("solveAltcha completes when widget is already verified", async () => {
-    const mockPage = {
-      evaluate: async () => true,
-    } as unknown as Page
-
-    expect(await solveAltcha(mockPage, 1000)).toBe(true)
-  })
-
-  test("solveFriendlyCaptcha completes when widget is already verified", async () => {
-    const mockPage = {
-      evaluate: async () => true,
-    } as unknown as Page
-
-    expect(await solveFriendlyCaptcha(mockPage, 1000)).toBe(true)
-  })
-
-  test("solveAltcha returns false if no widget found", async () => {
-    const mockPage = {
-      evaluate: async () => false,
-    } as unknown as Page
-
-    expect(await solveAltcha(mockPage, 100)).toBe(false)
-  })
-
-  test("solveFriendlyCaptcha returns false if no widget found", async () => {
-    const mockPage = {
-      evaluate: async () => false,
-    } as unknown as Page
-
-    expect(await solveFriendlyCaptcha(mockPage, 100)).toBe(false)
+  test("does not classify generic PoW, WebAssembly, mCaptcha, or header references", () => {
+    const ordinaryPages = [
+      "<article>How proof-of-work protects distributed systems</article>",
+      "<article>Our application compiles WebAssembly modules and worker.js.</article>",
+      "<h1>mCaptcha integration guide</h1>",
+      '<script src="/assets/friendlycaptcha-analytics.js"></script>',
+    ]
+    for (const html of ordinaryPages) {
+      expect(hasAltcha(html)).toBe(false)
+      expect(hasFriendlyCaptcha(html)).toBe(false)
+      expect(detectChallengeType(html, { "x-pow-challenge": "example" })).toBe("none")
+      expect(isBlocked(200, html)).toBe(false)
+    }
   })
 })
 
-describe("waitForPowResolution", () => {
-  test("returns ok when page content clears challenge markers", async () => {
-    let reads = 0
-    const mockPage = {
-      content: async () => {
-        reads++
-        return reads > 1 ? "<html><h1>Welcome</h1></html>" : POW_INTERSTITIAL_HTML
+type LocatorLike = {
+  first(): LocatorLike
+  click(options: { timeout: number; force: boolean }): Promise<void>
+  count(): Promise<number>
+}
+
+const locator =
+  (seen: string[]) =>
+  (selector: string): LocatorLike => ({
+    first() {
+      return this
+    },
+    async click() {
+      seen.push(selector)
+    },
+    async count() {
+      return 0
+    },
+  })
+
+describe("in-page proof-of-work widget solvers", () => {
+  test("detects both widget families without exceeding a short timeout", async () => {
+    const mainFrame = {}
+    const page = {
+      evaluate: async () => true,
+      frames: () => [mainFrame],
+      mainFrame: () => mainFrame,
+    } as unknown as Page
+
+    expect(await hasAltchaWidget(page, 25)).toBe(true)
+    expect(await hasFriendlyCaptchaWidget(page, 25)).toBe(true)
+  })
+
+  test("starts ALTCHA through verify() and does not click a form control", async () => {
+    let calls = 0
+    const selectors: string[] = []
+    const page = {
+      evaluate: async () => {
+        calls++
+        return calls === 1 || calls === 3 || calls >= 4
       },
-      evaluate: async () => {},
-      waitForLoadState: async () => {},
+      locator: locator(selectors),
     } as unknown as Page
 
-    const res = await waitForPowResolution(mockPage, 2000)
-    expect(res).toBe("ok")
+    expect(await solveAltcha(page, 500)).toBe(true)
+    expect(selectors).toEqual([])
   })
 
-  test("returns timeout when deadline exceeded and challenge persists", async () => {
-    const mockPage = {
-      content: async () => POW_INTERSTITIAL_HTML,
-      evaluate: async () => false,
+  test("ALTCHA legacy fallback only targets provider checkbox selectors", async () => {
+    let calls = 0
+    const selectors: string[] = []
+    const page = {
+      evaluate: async () => {
+        calls++
+        if (calls === 1) return true
+        if (calls === 2 || calls === 3) return false
+        if (calls === 4) return undefined
+        return true
+      },
+      locator: locator(selectors),
     } as unknown as Page
 
-    const res = await waitForPowResolution(mockPage, 50)
-    expect(res).toBe("timeout")
+    expect(await solveAltcha(page, 500)).toBe(true)
+    expect(selectors).toEqual(['altcha-widget input[type="checkbox"], altcha-widget .altcha-checkbox'])
+    expect(selectors.some((selector) => selector.includes("submit"))).toBe(false)
+  })
+
+  test("retries Friendly Captcha v2 until its asynchronous provider frame is ready", async () => {
+    let evaluateCalls = 0
+    let frameReads = 0
+    let solved = false
+    const selectors: string[] = []
+    const mainFrame = {}
+    const providerFrame = {
+      url: () => "https://global.frcapi.com/api/v2/captcha/widget?sitekey=test",
+      locator: (selector: string): LocatorLike => ({
+        first() {
+          return this
+        },
+        async click() {
+          selectors.push(selector)
+          solved = true
+        },
+        async count() {
+          return 1
+        },
+      }),
+    }
+    const page = {
+      evaluate: async () => {
+        evaluateCalls++
+        return evaluateCalls === 1 || solved
+      },
+      frames: () => (++frameReads >= 2 ? [mainFrame, providerFrame] : [mainFrame]),
+      mainFrame: () => mainFrame,
+      locator: locator(selectors),
+    } as unknown as Page
+
+    expect(await solveFriendlyCaptcha(page, 1000)).toBe(true)
+    expect(selectors).toEqual(['button[role="checkbox"], .frc-button'])
+    expect(selectors.some((selector) => selector.includes("submit"))).toBe(false)
+  })
+
+  test("returns promptly when either widget is absent", async () => {
+    const mainFrame = {}
+    const page = {
+      evaluate: async () => false,
+      frames: () => [mainFrame],
+      mainFrame: () => mainFrame,
+    } as unknown as Page
+    const started = Date.now()
+
+    expect(await solveAltcha(page, 75)).toBe(false)
+    expect(await solveFriendlyCaptcha(page, 75)).toBe(false)
+    expect(Date.now() - started).toBeLessThan(400)
   })
 })
 
-describe("Tier 1 PoW challenge escalation", () => {
+describe("Tier 1 widget escalation", () => {
   async function withFetch(response: Response, run: () => Promise<void>) {
     const original = globalThis.fetch
     ;(globalThis as { fetch: typeof fetch }).fetch = (async () => response) as typeof fetch
@@ -149,32 +184,29 @@ describe("Tier 1 PoW challenge escalation", () => {
     }
   }
 
-  test("escalates PoW interstitial to needs-js with pow challenge", async () => {
-    await withFetch(
-      new Response(POW_INTERSTITIAL_HTML, {
-        status: 200,
-        headers: { "content-type": "text/html" },
-      }),
-      async () => {
+  test("escalates ALTCHA and Friendly Captcha shells to browser tiers", async () => {
+    for (const [html, challenge, reason] of [
+      [ALTCHA_WIDGET_HTML, "altcha", "altcha-shell"],
+      [FRIENDLY_CAPTCHA_V2_HTML, "friendly-captcha", "friendly-captcha-shell"],
+    ] as const) {
+      await withFetch(new Response(html, { status: 200, headers: { "content-type": "text/html" } }), async () => {
         const result = await runTier1("https://example.test/")
         expect(result.status).toBe("needs-js")
-        expect(result.challenge).toBe("pow")
-        expect(result.reason).toBe("pow-challenge")
-      },
-    )
+        expect(result.challenge).toBe(challenge)
+        expect(result.reason).toBe(reason)
+      })
+    }
   })
 
-  test("escalates PoW response based on X-PoW-Challenge header", async () => {
+  test("does not escalate an unrelated X-PoW-Challenge header", async () => {
     await withFetch(
-      new Response("<html><body>Loading</body></html>", {
+      new Response("<html><body>ordinary response</body></html>", {
         status: 200,
-        headers: { "content-type": "text/html", "x-pow-challenge": "required" },
+        headers: { "content-type": "text/html", "x-pow-challenge": "protocol-specific" },
       }),
       async () => {
         const result = await runTier1("https://example.test/")
-        expect(result.status).toBe("needs-js")
-        expect(result.challenge).toBe("pow")
-        expect(result.reason).toBe("pow-challenge")
+        expect(result.status).toBe("success")
       },
     )
   })

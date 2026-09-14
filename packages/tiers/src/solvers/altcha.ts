@@ -1,104 +1,93 @@
-// Altcha Proof-of-Work (PoW) CAPTCHA solver.
-// Altcha is an open-source, privacy-first CAPTCHA alternative based on SHA-256 PoW.
-//
-// Flow:
-//   1. Check if the widget is already verified (input[name="altcha"] populated or state="verified").
-//   2. If unverified, click the checkbox/button inside the widget or shadow DOM to initiate PoW hashing.
-//   3. Wait for the client-side Web Worker / Wasm solver to complete and populate the verification payload.
-
 import type { Page } from "patchright"
 
+const POLL_INTERVAL_MS = 250
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+async function altchaVerified(page: Page): Promise<boolean> {
+  return page
+    .evaluate(() => {
+      const input = document.querySelector('input[name="altcha"]')
+      if (input instanceof HTMLInputElement && input.value.length > 20) return true
+
+      const widget = document.querySelector("altcha-widget") as (HTMLElement & { getState?: () => string }) | null
+      const state = widget?.getState?.() ?? widget?.getAttribute("state") ?? widget?.getAttribute("data-state")
+      return state?.toLowerCase() === "verified"
+    })
+    .catch(() => false)
+}
+
 export async function hasAltchaWidget(page: Page, timeoutMs = 3000): Promise<boolean> {
-  const POLL_INTERVAL = 300
-  const deadline = Date.now() + timeoutMs
+  const deadline = Date.now() + Math.max(0, timeoutMs)
 
-  while (Date.now() < deadline) {
+  do {
     const detected = await page
-      .evaluate(() => {
-        if (document.querySelector("altcha-widget, .altcha, [data-altcha]")) return true
-        const input = document.querySelector('input[name="altcha"]')
-        if (input) return true
-        return false
-      })
+      .evaluate(() => Boolean(document.querySelector('altcha-widget, input[name="altcha"]')))
       .catch(() => false)
-
     if (detected) return true
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL))
-  }
+
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) break
+    await sleep(Math.min(POLL_INTERVAL_MS, remaining))
+  } while (Date.now() < deadline)
+
   return false
 }
 
 export async function solveAltcha(page: Page, timeoutMs = 30_000): Promise<boolean> {
-  try {
-    const hasWidget = await hasAltchaWidget(page, 3000)
-    if (!hasWidget) return false
+  if (timeoutMs <= 0) return false
+  const deadline = Date.now() + timeoutMs
 
-    // Check if already auto-verified
-    const isAlreadyVerified = await page
+  try {
+    if (!(await hasAltchaWidget(page, Math.min(3000, timeoutMs)))) return false
+    if (await altchaVerified(page)) return true
+
+    // ALTCHA v3 exposes verify() on its Web Component. Start it without awaiting
+    // the potentially long PoW promise here; the bounded loop below owns timing.
+    const invokedApi = await page
       .evaluate(() => {
-        const input = document.querySelector('input[name="altcha"]')
-        if (input instanceof HTMLInputElement && input.value.length > 20) return true
-        const widget = document.querySelector("altcha-widget")
-        if (widget?.getAttribute("state") === "verified") return true
-        return false
+        const widget = document.querySelector("altcha-widget") as
+          | (HTMLElement & { verify?: () => Promise<unknown> })
+          | null
+        if (typeof widget?.verify !== "function") return false
+        void widget.verify().catch(() => {})
+        return true
       })
       .catch(() => false)
 
-    if (isAlreadyVerified) {
-      console.log("[altcha] already verified ✓")
-      return true
-    }
-
-    // Trigger verification:
-    // 1. Playwright locator click (pierces shadow DOM automatically)
-    const widgetLocator = page.locator(
-      'altcha-widget input[type="checkbox"], altcha-widget, .altcha input[type="checkbox"], .altcha',
-    )
-    await widgetLocator
-      .first()
-      .click({ timeout: 2000, force: true })
-      .catch(() => {})
-
-    // 2. DOM evaluate fallback
-    await page
-      .evaluate(() => {
-        const widget = document.querySelector("altcha-widget")
-        if (widget) {
-          const root = widget.shadowRoot ?? widget
-          const btn = root.querySelector('input[type="checkbox"], button, .altcha-checkbox') as HTMLElement | null
-          if (btn) btn.click()
-        } else {
-          const btn = document.querySelector('.altcha input[type="checkbox"], .altcha-checkbox') as HTMLElement | null
-          if (btn) btn.click()
-        }
-      })
-      .catch(() => {})
-
-    console.log("[altcha] triggered PoW challenge computation")
-
-    // Poll until the state reaches 'verified' or the payload input is set
-    const deadline = Date.now() + timeoutMs
-    while (Date.now() < deadline) {
-      const verified = await page
-        .evaluate(() => {
-          const input = document.querySelector('input[name="altcha"]')
-          if (input instanceof HTMLInputElement && input.value.length > 20) return true
-          const widget = document.querySelector("altcha-widget")
-          if (widget?.getAttribute("state") === "verified") return true
-          return false
-        })
-        .catch(() => false)
-
-      if (verified) {
-        console.log("[altcha] verified successfully ✓")
-        return true
+    // Older widget versions may expose only their checkbox. Use provider-specific
+    // controls and never click the host element or a form submit button.
+    if (!invokedApi) {
+      const clickBudget = Math.max(0, Math.min(2000, deadline - Date.now()))
+      let clicked = false
+      if (clickBudget > 0) {
+        clicked = await page
+          .locator('altcha-widget input[type="checkbox"], altcha-widget .altcha-checkbox')
+          .first()
+          .click({ timeout: clickBudget, force: true })
+          .then(() => true)
+          .catch(() => false)
       }
-      await new Promise((r) => setTimeout(r, 400))
+      if (!clicked) {
+        await page
+          .evaluate(() => {
+            const widget = document.querySelector("altcha-widget")
+            const control = widget?.shadowRoot?.querySelector(
+              'input[type="checkbox"], .altcha-checkbox',
+            ) as HTMLElement | null
+            control?.click()
+          })
+          .catch(() => {})
+      }
     }
 
-    return false
+    while (Date.now() < deadline) {
+      if (await altchaVerified(page)) return true
+      await sleep(Math.min(POLL_INTERVAL_MS, Math.max(0, deadline - Date.now())))
+    }
   } catch (err) {
     console.log("[altcha] error:", err instanceof Error ? err.message : err)
-    return false
   }
+
+  return false
 }

@@ -1,13 +1,36 @@
 ---
 title: Session Cache
-description: How TRAWL caches solved browser sessions in Redis to avoid unnecessary challenge work.
+description: How TRAWL caches solved browser sessions to avoid unnecessary challenge work, with a pluggable Redis or in-memory driver.
 ---
 
 # Session Cache
 
 The session cache is what makes Tier 2 possible. After a successful Tier 3 or Tier 4 solve, TRAWL
-saves the extracted cookies and browser user agent in Redis. The next request to the same hostname
-injects that state into a browser context and attempts to reuse the solved session.
+saves the extracted cookies and browser user agent in the configured cache backend. The next request
+to the same hostname injects that state into a browser context and attempts to reuse the solved
+session.
+
+## Cache driver
+
+TRAWL supports two session cache drivers, selected at startup via `SESSION_CACHE_DRIVER`:
+
+| Driver | Value | Shared across instances | External dependencies |
+| --- | --- | --- | --- |
+| Redis (default) | `redis` | Yes | Redis 8.8 |
+| In-memory | `memory` | No (per-process) | None |
+
+```ini
+SESSION_CACHE_DRIVER=redis   # default — shared across instances
+SESSION_CACHE_DRIVER=memory  # in-process Map, zero dependencies
+```
+
+Use `redis` when running multiple API instances behind a load balancer — sessions solved on one
+instance are visible to all others. Use `memory` for single-instance deployments where the
+operational overhead of Redis is not justified; sessions are scoped to the process and lost on
+restart.
+
+Both drivers implement the `SessionCacheStore` interface, so additional backends (e.g. SQLite, Valkey,
+KeyDB) can be added without touching the orchestrator or tier logic.
 
 ## Storage format
 
@@ -22,7 +45,7 @@ interface SessionData {
 }
 ```
 
-TTL: `REDIS_SESSION_TTL_SECONDS` (default 3600 seconds / 1 hour).
+TTL: `REDIS_SESSION_TTL_SECONDS` (default 3600 seconds / 1 hour) for both drivers.
 
 ## Session key
 
@@ -42,10 +65,10 @@ Subdomains have separate sessions because WAF and application cookies can differ
 Tier 3 succeeds
   │
   ├── extract cookies from browser context
-  ├── REDIS SET session:hostname → JSON  EX REDIS_SESSION_TTL_SECONDS
+  ├── cache session:hostname with the configured TTL
   │
   └── next request to same domain:
-        REDIS GET session:hostname
+        load session:hostname
           ├── hit  → Tier 2: inject cookies and navigate
           └── miss → Tier 3: fresh solve, save to cache
 ```
@@ -54,14 +77,14 @@ Tier 3 succeeds
 
 If Tier 2 navigates with cached state and still receives a recognized challenge wall, the orchestrator:
 
-1. Calls `sessionCache.invalidate(domain)` — deletes the Redis key
+1. Calls `sessionCache.invalidate(domain)` — deletes the cache entry
 2. Escalates to Tier 3 to get a fresh session
 
 This handles provider cookies expiring or being rejected before the Redis TTL ends.
 
 ## Redis
 
-TRAWL's cache backend is Redis 8.8. TRAWL talks to it with `new RedisClient(REDIS_URL)` from Bun's native Redis client (not ioredis).
+When `SESSION_CACHE_DRIVER=redis` (the default), TRAWL talks to Redis 8.8 with `new RedisClient(REDIS_URL)` from Bun's native Redis client (not ioredis).
 
 The cache is optional. When `REDIS_URL` is empty or unset, TRAWL does not create a Redis client and
 Tier 2 remains disabled.
@@ -78,3 +101,14 @@ const redis = new RedisClient('redis://localhost:6379')
 await redis.set('session:example.com', JSON.stringify(data), 'EX', 3600)
 const raw = await redis.get('session:example.com')
 ```
+
+## In-memory
+
+When `SESSION_CACHE_DRIVER=memory`, TRAWL uses an in-process `Map` with TTL-based expiry. There is
+no network I/O, so the cache is available immediately on startup. Expired entries are removed on
+read and before writes. `MEMORY_SESSION_CACHE_MAX_ENTRIES` (default 1000) bounds memory growth;
+when full, the least recently used session is evicted.
+
+Because the cache lives in the API process, sessions are **not shared** across instances. A solve
+on instance A is invisible to instance B, and all sessions disappear on restart. Use this driver
+only for single-instance deployments. Session contents are never written to application logs.

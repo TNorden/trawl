@@ -13,6 +13,7 @@
 // Interstitial-level CF challenges are handled separately in challengeWait.ts.
 
 import type { Page } from "patchright"
+import { hasAltcha as hasAltchaMarkup, hasFriendlyCaptcha as hasFriendlyCaptchaMarkup } from "../utils/detect"
 import { hasAltchaWidget, solveAltcha } from "./altcha"
 import { hasFriendlyCaptchaWidget, solveFriendlyCaptcha } from "./friendlyCaptcha"
 import { hasGeetestSlide, solveGeetestSlide } from "./geetest"
@@ -86,6 +87,7 @@ async function detectTurnstile(page: Page, timeoutMs: number): Promise<boolean> 
 }
 
 export async function solvePageCaptchas(page: Page, timeoutMs = 30_000): Promise<SolveResult> {
+  const deadline = Date.now() + Math.max(0, timeoutMs)
   const attempted: string[] = []
   const solved: string[] = []
 
@@ -95,8 +97,8 @@ export async function solvePageCaptchas(page: Page, timeoutMs = 30_000): Promise
   const mightHaveRecaptcha = /g-recaptcha|google\.com\/recaptcha|recaptcha\.net|grecaptcha/i.test(html)
   const mightHaveHcaptcha = /h-captcha|hcaptcha\.com/i.test(html)
   const mightHaveGeetest = /geetest|gt_container|initGeetest/i.test(html)
-  const mightHaveAltcha = /altcha|data-altcha/i.test(html)
-  const mightHaveFriendlyCaptcha = /frc-captcha|friendly-captcha|friendlychallenge/i.test(html)
+  const mightHaveAltcha = hasAltchaMarkup(html)
+  const mightHaveFriendlyCaptcha = hasFriendlyCaptchaMarkup(html)
 
   if (
     !mightHaveTurnstile &&
@@ -127,7 +129,7 @@ export async function solvePageCaptchas(page: Page, timeoutMs = 30_000): Promise
   // waitForSelector already handles waiting for widgets — no blind sleep needed.
   // 3s: Turnstile/reCAPTCHA iframes typically appear within 2s of page load;
   // GeeTest/hCaptcha/Altcha/FriendlyCaptcha detect via HTML markers (instant). If nothing in 3s, skip.
-  const DETECT_MS = 3_000
+  const DETECT_MS = Math.min(3_000, Math.max(0, deadline - Date.now()))
 
   const [hasTurnstile, hasHcaptcha, hasRecaptcha, hasGeetest, hasAltcha, hasFriendlyCaptcha] = await Promise.all([
     mightHaveTurnstile ? detectTurnstile(page, DETECT_MS) : Promise.resolve(false),
@@ -157,7 +159,7 @@ export async function solvePageCaptchas(page: Page, timeoutMs = 30_000): Promise
     return { attempted: [], solved: [] }
   }
 
-  const perMs = Math.floor(timeoutMs / count)
+  const perMs = Math.floor(Math.max(0, deadline - Date.now()) / count)
 
   if (hasTurnstile) {
     attempted.push("turnstile")

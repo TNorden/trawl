@@ -1,158 +1,117 @@
-// Friendly Captcha Proof-of-Work (PoW) CAPTCHA solver.
-// Friendly Captcha is an open-source, privacy-friendly CAPTCHA alternative based on client-side SHA-256 PoW puzzles.
-//
-// Flow:
-//   1. Check if the widget is already verified (input[name="frc-captcha-solution"] populated or state="success").
-//   2. If unverified, click the start button / checkbox inside the widget or shadow DOM to initiate PoW hashing.
-//   3. Wait for the client-side Web Worker / Wasm solver to complete and populate the solution token.
-
 import type { Page } from "patchright"
 
-const WIDGET_SELECTORS = ".frc-captcha, friendly-captcha, frc-captcha, [data-friendly-captcha]"
-const SOLUTION_SELECTORS = 'input[name="frc-captcha-solution"], input[name="frc-captcha-response"]'
+const POLL_INTERVAL_MS = 250
+const WIDGET_SELECTOR = ".frc-captcha"
+const SOLUTION_SELECTOR = 'input[name="frc-captcha-solution"], input[name="frc-captcha-response"]'
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+const isProviderFrame = (url: string) => /(?:frcapi\.com|friendlycaptcha\.[^/]+)\/.+(?:captcha\/)?widget/i.test(url)
+
+async function friendlyCaptchaVerified(page: Page): Promise<boolean> {
+  return page
+    .evaluate(
+      ({ solutionSelector, widgetSelector }) => {
+        const validResponse = (value: unknown) =>
+          typeof value === "string" && value.length > 20 && !value.startsWith(".")
+        const input = document.querySelector(solutionSelector)
+        if (input instanceof HTMLInputElement && validResponse(input.value)) return true
+
+        const mount = document.querySelector(widgetSelector) as
+          | (HTMLElement & {
+              frcWidget?: { getResponse?: () => string; getState?: () => string }
+            })
+          | null
+        return mount?.frcWidget?.getState?.() === "completed" && validResponse(mount.frcWidget.getResponse?.())
+      },
+      { solutionSelector: SOLUTION_SELECTOR, widgetSelector: WIDGET_SELECTOR },
+    )
+    .catch(() => false)
+}
 
 export async function hasFriendlyCaptchaWidget(page: Page, timeoutMs = 3000): Promise<boolean> {
-  const POLL_INTERVAL = 300
-  const deadline = Date.now() + timeoutMs
+  const deadline = Date.now() + Math.max(0, timeoutMs)
 
-  while (Date.now() < deadline) {
-    const detected = await page
+  do {
+    const viaDom = await page
       .evaluate(
-        ({ widgetSel, solutionSel }) => {
-          if (document.querySelector(widgetSel)) return true
-          if (document.querySelector(solutionSel)) return true
-          if (document.querySelector('iframe[src*="frcapi.com"], iframe[src*="friendlycaptcha"]')) return true
-          return false
-        },
-        { widgetSel: WIDGET_SELECTORS, solutionSel: SOLUTION_SELECTORS },
+        ({ solutionSelector, widgetSelector }) =>
+          Boolean(document.querySelector(widgetSelector) || document.querySelector(solutionSelector)),
+        { solutionSelector: SOLUTION_SELECTOR, widgetSelector: WIDGET_SELECTOR },
       )
       .catch(() => false)
+    if (viaDom || page.frames().some((frame) => frame !== page.mainFrame() && isProviderFrame(frame.url()))) {
+      return true
+    }
 
-    if (detected) return true
-    await new Promise((r) => setTimeout(r, POLL_INTERVAL))
-  }
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) break
+    await sleep(Math.min(POLL_INTERVAL_MS, remaining))
+  } while (Date.now() < deadline)
+
   return false
 }
 
 export async function solveFriendlyCaptcha(page: Page, timeoutMs = 30_000): Promise<boolean> {
+  if (timeoutMs <= 0) return false
+  const deadline = Date.now() + timeoutMs
+
   try {
-    const hasWidget = await hasFriendlyCaptchaWidget(page, 3000)
-    if (!hasWidget) return false
+    if (!(await hasFriendlyCaptchaWidget(page, Math.min(3000, timeoutMs)))) return false
+    if (await friendlyCaptchaVerified(page)) return true
 
-    // Check if already verified (tokens must not be empty or status placeholders like .UNACTIVATED)
-    const isAlreadyVerified = await page
-      .evaluate((sel) => {
-        const input = document.querySelector(sel)
-        if (input instanceof HTMLInputElement && input.value.length > 20 && !input.value.startsWith(".")) return true
-        const widget = document.querySelector(".frc-captcha, friendly-captcha, frc-captcha")
-        if (widget?.classList.contains("frc-success")) return true
-        if (widget?.getAttribute("data-state") === "success") return true
-        return false
-      }, SOLUTION_SELECTORS)
-      .catch(() => false)
+    // Friendly Captcha v2 exposes the supported start() API on the mount node.
+    // It handles auto/focus/none start modes without guessing at page controls.
+    let invokedApi = false
+    let clickedControl = false
 
-    if (isAlreadyVerified) {
-      console.log("[friendly-captcha] already verified ✓")
-      return true
-    }
+    while (Date.now() < deadline) {
+      if (await friendlyCaptchaVerified(page)) return true
 
-    const widgetFrameLocator = page.frameLocator(
-      'iframe.frc-i-widget, iframe[src*="captcha/widget"], iframe[src*="frcapi.com"], .frc-captcha iframe, friendly-captcha iframe',
-    )
-
-    let clicked = false
-    const tryClick = async (): Promise<boolean> => {
-      // 1. Frame locator (v2 iframe)
-      const frameBtn = widgetFrameLocator.locator('button[role="checkbox"], button.button, button').first()
-      const clickedFrame = await frameBtn
-        .click({ timeout: 1500, force: true })
-        .then(() => true)
-        .catch(() => false)
-      if (clickedFrame) return true
-
-      // 2. page.frames() lookup
-      const frcFrame = page.frames().find((f) => {
-        if (f === page.mainFrame()) return false
-        const u = f.url()
-        return u.includes("captcha/widget") || (u.includes("friendlycaptcha") && u.includes("widget"))
-      })
-      if (frcFrame) {
-        const btn = frcFrame.locator('button[role="checkbox"], button.button, button').first()
-        const clickedDirect = await btn
-          .click({ timeout: 1500, force: true })
-          .then(() => true)
+      // The SDK and its cross-origin widget frame are added asynchronously. Retry
+      // discovery within the same deadline rather than taking a one-time snapshot.
+      if (!invokedApi) {
+        invokedApi = await page
+          .evaluate((widgetSelector) => {
+            const mount = document.querySelector(widgetSelector) as
+              | (HTMLElement & { frcWidget?: { start?: () => void } })
+              | null
+            if (typeof mount?.frcWidget?.start !== "function") return false
+            mount.frcWidget.start()
+            return true
+          }, WIDGET_SELECTOR)
           .catch(() => false)
-        if (clickedDirect) return true
       }
 
-      // 3. In-page element (v1 or custom v2 element)
-      const clickedInPage = await page
-        .evaluate((widgetSel) => {
-          const widget = document.querySelector(widgetSel)
-          if (widget) {
-            const root = widget.shadowRoot ?? widget
-            const btn = root.querySelector(
-              ".frc-button, button, input[type='button'], input[type='checkbox']",
-            ) as HTMLElement | null
-            if (btn) {
-              btn.click()
-              return true
-            }
+      if (!clickedControl) {
+        const clickBudget = Math.max(0, Math.min(750, deadline - Date.now()))
+        const frame = page
+          .frames()
+          .find((candidate) => candidate !== page.mainFrame() && isProviderFrame(candidate.url()))
+        if (frame && clickBudget > 0) {
+          clickedControl = await frame
+            .locator('button[role="checkbox"], .frc-button')
+            .first()
+            .click({ timeout: clickBudget, force: true })
+            .then(() => true)
+            .catch(() => false)
+        } else if (clickBudget > 0) {
+          // Friendly Captcha v1 renders .frc-button in the embedding document.
+          const legacy = page.locator(".frc-captcha .frc-button")
+          if ((await legacy.count().catch(() => 0)) > 0) {
+            clickedControl = await legacy
+              .first()
+              .click({ timeout: clickBudget, force: true })
+              .then(() => true)
+              .catch(() => false)
           }
-          const btn = document.querySelector(".frc-captcha .frc-button, .frc-button") as HTMLElement | null
-          if (btn) {
-            btn.click()
-            return true
-          }
-          return false
-        }, WIDGET_SELECTORS)
-        .catch(() => false)
-
-      return Boolean(clickedInPage)
-    }
-
-    // Poll until the solution input is populated or widget reaches success state
-    const deadline = Date.now() + timeoutMs
-    while (Date.now() < deadline) {
-      if (!clicked) {
-        clicked = await tryClick()
-        if (clicked) {
-          console.log("[friendly-captcha] triggered PoW challenge computation")
         }
       }
 
-      const verified = await page
-        .evaluate((sel) => {
-          const input = document.querySelector(sel)
-          if (input instanceof HTMLInputElement && input.value.length > 20 && !input.value.startsWith(".")) return true
-          const widget = document.querySelector(".frc-captcha, friendly-captcha, frc-captcha")
-          if (widget?.classList.contains("frc-success")) return true
-          if (widget?.getAttribute("data-state") === "success") return true
-          return false
-        }, SOLUTION_SELECTORS)
-        .catch(() => false)
-
-      if (verified) {
-        console.log("[friendly-captcha] verified successfully ✓")
-        return true
-      }
-
-      const frameChecked = await widgetFrameLocator
-        .locator('button[role="checkbox"][aria-checked="true"]')
-        .first()
-        .isVisible()
-        .catch(() => false)
-      if (frameChecked) {
-        console.log("[friendly-captcha] frame locator marked verified ✓")
-        return true
-      }
-
-      await new Promise((r) => setTimeout(r, 400))
+      await sleep(Math.min(POLL_INTERVAL_MS, Math.max(0, deadline - Date.now())))
     }
-
-    return false
   } catch (err) {
     console.log("[friendly-captcha] error:", err instanceof Error ? err.message : err)
-    return false
   }
+
+  return false
 }

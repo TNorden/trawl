@@ -8,7 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Proof-of-Work (PoW) and Wasm challenge support.** In-page solvers for Altcha (SHA-256 PoW) and Friendly Captcha (v1 and v2 client puzzle) widgets, plus detection and dedicated waiting for PoW gates and WebAssembly interstitials (`hasPowChallenge`, `waitForPowResolution`) (#121).
+- Pluggable session cache driver selectable via `SESSION_CACHE_DRIVER` (`redis` default, bounded `memory` for single-instance deployments). The minimal Compose variant uses memory by default; `MEMORY_SESSION_CACHE_MAX_ENTRIES` limits it with LRU eviction (#117).
+- Local, provider-specific solving for embedded ALTCHA and Friendly Captcha v1/v2 proof-of-work widgets in browser tiers (#121).
+
+### Fixed
+- Detect DuckDuckGo anomaly challenge walls in Tier 1 and the MITM proxy, escalating them to browser tiers instead of returning challenge HTML as successful content (#119).
 
 ## [1.5.0] - 2026-09-04
 
