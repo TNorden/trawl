@@ -34,11 +34,39 @@ match an entry in this list.
 MCP_ALLOWED_ORIGINS=https://chat.example.com,https://admin.example.com
 ```
 
+## Session Cache Driver
+
+### `SESSION_CACHE_DRIVER`
+
+**Default:** `redis`
+
+Selects the backend used for the Tier 2 session cache. Redis remains the default to preserve
+cross-instance session sharing and backward compatibility.
+
+```ini
+SESSION_CACHE_DRIVER=redis   # default — shared across instances, requires Redis
+SESSION_CACHE_DRIVER=memory  # in-process Map, zero external dependencies
+```
+
+Use `memory` for single-instance deployments where running Redis is not justified. Sessions are
+scoped to the API process and lost on restart — they are **not shared** across instances. See
+[Session Cache](/architecture/session-cache) for details.
+
+Unknown values stop startup with a configuration error instead of silently selecting another
+backend.
+
+### `MEMORY_SESSION_CACHE_MAX_ENTRIES`
+
+**Default:** `1000`
+
+Maximum number of sessions retained by the memory driver. Once full, it evicts the least recently
+used session. Expired sessions are removed automatically on reads and writes.
+
 ## Redis
 
 ### `REDIS_URL`
 
-**Default:** _(empty — session cache disabled)_
+**Default:** _(empty — Redis driver disabled)_
 
 Standard Redis connection URL — TRAWL's cache backend is Redis 8.8. Set a non-empty URL to enable
 the session cache. When running inside Docker Compose use the service name:
@@ -77,8 +105,8 @@ disable retries. The supplied minimal Compose variant does this automatically.
 
 **Default:** `3600` (1 hour)
 
-How long solved browser cookies and user-agent state are cached in Redis per domain. After this TTL
-the next protected request triggers a fresh challenge solve and refreshes the cache.
+How long solved browser cookies and user-agent state are cached per domain by either driver. After
+this TTL the next protected request triggers a fresh challenge solve and refreshes the cache.
 
 Cloudflare's `cf_clearance` cookie typically has a 30-minute expiry. Setting
 `REDIS_SESSION_TTL_SECONDS` below 1800 wastes cache hits; setting it above 7200 risks replaying
