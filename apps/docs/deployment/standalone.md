@@ -69,8 +69,9 @@ docker build -f apps/api/Dockerfile.baseline -t trawl:baseline .
 docker run -d --name trawl -p 8191:8191 --shm-size=1gb trawl:baseline
 ```
 
-Both API Dockerfiles omit the spoofed macOS and Windows font bundles by default. To retain them for
-rendering that must match those Camoufox operating-system profiles, build with:
+Both API Dockerfiles omit the spoofed macOS and Windows font bundles by default. TRAWL detects
+their absence and limits these compact images to Linux fingerprints, keeping the advertised OS,
+font probes, and rendered output consistent. To retain the complete OS pool, build with:
 
 ```bash
 docker build \
@@ -79,9 +80,9 @@ docker build \
   -t trawl .
 ```
 
-This adds approximately 891 MB to the image. Every release is also published prebuilt this way as
-`ghcr.io/germondai/trawl:<version>-fonts` / `:latest-fonts`, so a `screenshot` consumer does not
-need to build locally. Other build arguments pin or validate bundled
+This adds approximately 891 MB to the image. Modern releases are also published prebuilt this way
+as `ghcr.io/germondai/trawl:<version>-fonts` / `:latest-fonts`, so deployments needing Windows and
+macOS profiles do not need to build locally. Other build arguments pin or validate bundled
 dependencies and normally should not be overridden: `UBO_VERSION`, `UBO_AMO_FILE_ID`, `UBO_SHA256`,
 `GEOLITE_CITY_MIN_BYTES`, and (for the baseline image) `BUN_VERSION`.
 

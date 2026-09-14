@@ -334,8 +334,8 @@ Tier 4: Residential proxy ──── success ──→ cache + return (15–45
 
 | Image tag                              | Built from                     | Runtime                       | Use case                                                   |
 | -------------------------------------- | ------------------------------ | ----------------------------- | ---------------------------------------------------------- |
-| `ghcr.io/germondai/trawl:latest`       | `apps/api/Dockerfile`          | Bun 1.4.0 (modern, AVX2)     | Default — modern Linux amd64/arm64                         |
-| `ghcr.io/germondai/trawl:latest-fonts` | `apps/api/Dockerfile`          | Bun 1.4.0 (modern, AVX2)     | Same image built with `CAMOUFOX_KEEP_SPOOFED_OS_FONTS=1` — for `screenshot` consumers (+~891 MB) |
+| `ghcr.io/germondai/trawl:latest`       | `apps/api/Dockerfile`          | Bun 1.4.0 (modern, AVX2)     | Compact default — Linux fingerprints                       |
+| `ghcr.io/germondai/trawl:latest-fonts` | `apps/api/Dockerfile`          | Bun 1.4.0 (modern, AVX2)     | Full Windows/macOS/Linux font and fingerprint pool (+~891 MB) |
 | `ghcr.io/germondai/trawl:baseline`     | `apps/api/Dockerfile.baseline` | Bun 1.4.0 baseline (no AVX2) | Older CPUs / older kernels (Synology NAS, J4125, Atom-era) |
 
 All tags live on the same `ghcr.io/germondai/trawl` package — they share the registry but differ in Dockerfile source or build arguments. Pick whichever tag fits your hardware and output:
@@ -344,8 +344,7 @@ All tags live on the same `ghcr.io/germondai/trawl` package — they share the r
 # Modern hardware (most users)
 image: ghcr.io/germondai/trawl:latest
 
-# Rendered output: the pool spoofs Windows/macOS per browser, and the default image
-# drops those font bundles, so screenshots of a non-Linux fingerprint render as tofu.
+# Full OS diversity and matching rendered output/font metrics
 image: ghcr.io/germondai/trawl:latest-fonts
 
 # Older CPUs without AVX2 / Synology / older kernels

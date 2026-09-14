@@ -117,20 +117,27 @@ export async function scrape(
 
   // Tier 1: plain HTTP fetch
   if (!req.skipHttp && !skipTier1ForProxy && maxTier >= 1) {
-    const t1 = await runTier1(req.url, sanitizedHeaders, req.method, req.body, tier1Proxy, deps.validateOutboundUrl)
+    // Tier 1 has no browser handle, so select its identity up front and use the
+    // same UA for both the outbound request and the public result.
+    const tier1Fingerprint = FINGERPRINT_POOL[Math.floor(Math.random() * FINGERPRINT_POOL.length)] ?? FINGERPRINT
+    const t1 = await runTier1(
+      req.url,
+      { ...sanitizedHeaders, "User-Agent": tier1Fingerprint.userAgent },
+      req.method,
+      req.body,
+      tier1Proxy,
+      deps.validateOutboundUrl,
+    )
     emit(t1)
     if (explicitProxy && t1.status === "error" && t1.reason?.startsWith("proxy-")) {
       throw new ScrapeError(t1.reason, timings)
     }
     if (hasUsablePayload(t1)) {
-      // Tier 1 doesn't acquire a browser (it's a plain HTTP fetch). Use a random fingerprint
-      // UA from the pool so even Tier 1 requests don't share a single signature.
-      const tier1UA = FINGERPRINT_POOL[Math.floor(Math.random() * FINGERPRINT_POOL.length)].userAgent
       return {
         url: t1.effectiveUrl ?? req.url,
         html: normalizeHtml(t1.html ?? ""),
         cookies: [],
-        userAgent: tier1UA,
+        userAgent: tier1Fingerprint.userAgent,
         statusCode: t1.statusCode ?? 200,
         tier: 1,
         sessionCached: false,
