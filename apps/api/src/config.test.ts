@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test"
 
 type ConfigSnapshot = {
   redisUrl: string | null
+  sessionCacheDriver: string
   redisSessionTtlSeconds: number
+  memorySessionCacheMaxEntries: number
   poolSize: number
   maxContentProcesses: number
   acquireTimeoutMs: number
@@ -20,7 +22,9 @@ const readConfig = (overrides: Record<string, string>): ConfigSnapshot => {
     const config = await import("./config.ts")
     console.log(JSON.stringify({
       redisUrl: config.REDIS_URL ?? null,
+      sessionCacheDriver: config.SESSION_CACHE_DRIVER,
       redisSessionTtlSeconds: config.REDIS_SESSION_TTL_SECONDS,
+      memorySessionCacheMaxEntries: config.MEMORY_SESSION_CACHE_MAX_ENTRIES,
       poolSize: config.POOL_SIZE,
       maxContentProcesses: config.BROWSER_MAX_CONTENT_PROCESSES,
       acquireTimeoutMs: config.ACQUIRE_TIMEOUT_MS,
@@ -47,7 +51,9 @@ describe("environment configuration", () => {
     expect(
       readConfig({
         REDIS_URL: "  redis://cache.test:6379/2  ",
+        SESSION_CACHE_DRIVER: " MeMoRy ",
         REDIS_SESSION_TTL_SECONDS: "7200",
+        MEMORY_SESSION_CACHE_MAX_ENTRIES: "250",
         BROWSER_POOL_SIZE: "4",
         BROWSER_MAX_CONTENT_PROCESSES: "3",
         BROWSER_ACQUIRE_TIMEOUT_MS: "12000",
@@ -61,7 +67,9 @@ describe("environment configuration", () => {
       }),
     ).toEqual({
       redisUrl: "redis://cache.test:6379/2",
+      sessionCacheDriver: "memory",
       redisSessionTtlSeconds: 7200,
+      memorySessionCacheMaxEntries: 250,
       poolSize: 4,
       maxContentProcesses: 3,
       acquireTimeoutMs: 12000,
@@ -79,7 +87,9 @@ describe("environment configuration", () => {
     expect(
       readConfig({
         REDIS_URL: "   ",
+        SESSION_CACHE_DRIVER: "",
         REDIS_SESSION_TTL_SECONDS: "-1",
+        MEMORY_SESSION_CACHE_MAX_ENTRIES: "0",
         SESSION_TTL_SECONDS: "99",
         BROWSER_POOL_SIZE: "NaN",
         BROWSER_MAX_CONTENT_PROCESSES: "0",
@@ -95,7 +105,9 @@ describe("environment configuration", () => {
       }),
     ).toEqual({
       redisUrl: null,
+      sessionCacheDriver: "redis",
       redisSessionTtlSeconds: 3600,
+      memorySessionCacheMaxEntries: 1000,
       poolSize: 3,
       maxContentProcesses: 2,
       acquireTimeoutMs: 15000,
@@ -107,5 +119,16 @@ describe("environment configuration", () => {
       port: 8191,
       mitmPort: 8192,
     })
+  })
+
+  test("rejects an unknown session cache driver", () => {
+    const result = Bun.spawnSync({
+      cmd: [process.execPath, "-e", 'await import("./config.ts")'],
+      cwd: import.meta.dir,
+      env: { ...process.env, SESSION_CACHE_DRIVER: "memroy" },
+    })
+
+    expect(result.exitCode).not.toBe(0)
+    expect(result.stderr.toString()).toContain('Invalid SESSION_CACHE_DRIVER "memroy"')
   })
 })

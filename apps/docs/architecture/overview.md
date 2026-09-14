@@ -51,9 +51,9 @@ Maintains a fixed set of `{ browser, context }` pairs using [Camoufox](https://g
 
 ### Session Cache (`packages/browser/src/session.ts`)
 
-Stores `{ cookies, userAgent, savedAt }` in Redis, keyed by hostname (`session:example.com`). The TTL is configurable (default 1 hour). Tier 3 writes to it on every successful challenge solve. Tier 2 reads from it at the start of every request.
+Stores `{ cookies, userAgent, savedAt }` in the selected Redis or bounded in-memory backend, keyed by hostname (`session:example.com`). The TTL is configurable (default 1 hour). Tier 3 writes to it on every successful challenge solve. Tier 2 reads from it at the start of every request.
 
-Redis is optional — if `REDIS_URL` is empty or not set, the session cache is disabled and every request escalates to Tier 3.
+Redis is optional — single-process deployments can select `SESSION_CACHE_DRIVER=memory`. With the default Redis driver, an empty or unset `REDIS_URL` disables the session cache and every request escalates to Tier 3.
 
 ### Tiers (`packages/tiers`)
 
