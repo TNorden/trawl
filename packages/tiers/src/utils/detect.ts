@@ -10,6 +10,8 @@ export type ChallengeType =
   | "aws-waf"
   | "datadome"
   | "duckduckgo"
+  | "altcha"
+  | "friendly-captcha"
   | "none"
 
 export function hasCloudflareChallengeHeader(headers: Record<string, string> = {}): boolean {
@@ -37,6 +39,7 @@ export function isCloudflarePage(html: string, headers: Record<string, string>):
   if (hasCloudflareChallengeHeader(headers)) return true
   if (hasDdosGuardChallenge(html)) return false
   if (hasDuckDuckGoChallenge(html)) return false
+  if (hasAltcha(html) || hasFriendlyCaptcha(html)) return false
   if (/<title>[^<]*(just a moment|please wait|checking|attention required)[^<]*<\/title>/i.test(html)) return true
   if (/checking your browser/i.test(html)) return true
   if (/enable javascript and cookies to continue/i.test(html)) return true
@@ -98,6 +101,24 @@ export function hasRecaptcha(html: string): boolean {
 
 export function hasCapChallenge(html: string): boolean {
   return /cap-widget|trycap\.dev|data-cap-/i.test(html)
+}
+
+// ALTCHA is a Web Component. Restrict static detection to the component or its
+// generated form field; the brand name and generic PoW wording also occur in
+// ordinary articles and integration documentation.
+export function hasAltcha(html: string): boolean {
+  return /<altcha-widget\b/i.test(html) || /<input\b[^>]*\bname\s*=\s*["']altcha["']/i.test(html)
+}
+
+// Friendly Captcha v1/v2 mount under .frc-captcha and publish one of these two
+// managed form fields. A provider iframe is only meaningful when its URL is a
+// widget path; a bare friendlycaptcha/frcapi mention is not enough.
+export function hasFriendlyCaptcha(html: string): boolean {
+  if (/<[^>]+\bclass\s*=\s*["'][^"']*\bfrc-captcha\b[^"']*["']/i.test(html)) return true
+  if (/<input\b[^>]*\bname\s*=\s*["']frc-captcha-(?:solution|response)["']/i.test(html)) return true
+  return /<iframe\b[^>]*\bsrc\s*=\s*["'][^"']*(?:frcapi\.com|friendlycaptcha\.[^/"']+)[^"']*\/(?:captcha\/)?widget\b/i.test(
+    html,
+  )
 }
 
 // Imperva/Incapsula WAF challenge — sensor-based (reese84, current) or legacy (___utmvc).
@@ -239,6 +260,8 @@ export function detectChallengeType(
   if (hasTurnstile(html)) return "cloudflare-turnstile"
   if (hasDdosGuardChallenge(html, headers)) return "ddos-guard"
   if (hasDuckDuckGoChallenge(html, headers)) return "duckduckgo"
+  if (hasAltcha(html)) return "altcha"
+  if (hasFriendlyCaptcha(html)) return "friendly-captcha"
   if (isCloudflarePage(html, headers)) return "cloudflare-interstitial"
   if (hasImpervaChallenge(html, headers)) return "imperva"
   if (hasAkamaiChallenge(html, headers)) return "akamai"
@@ -266,7 +289,9 @@ export function needsJs(html: string, headers: Record<string, string>): boolean 
     hasAkamaiChallenge(html, headers) ||
     hasDdosGuardChallenge(html, headers) ||
     hasDataDomeChallenge(html, headers) ||
-    hasDuckDuckGoChallenge(html, headers)
+    hasDuckDuckGoChallenge(html, headers) ||
+    hasAltcha(html) ||
+    hasFriendlyCaptcha(html)
   )
 }
 

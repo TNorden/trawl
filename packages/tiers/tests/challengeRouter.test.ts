@@ -4,6 +4,7 @@ import { routeChallengeWait } from "../src/utils/challengeRouter"
 import { DATADOME_CAPTCHA, DATADOME_INTERSTITIAL, DATADOME_JSON_HARD_BLOCK } from "./fixtures/datadome"
 import { DDOS_GUARD_INTERSTITIAL } from "./fixtures/ddosGuard"
 import { DUCKDUCKGO_ANOMALY_CHALLENGE } from "./fixtures/duckduckgo"
+import { ALTCHA_WIDGET_HTML, FRIENDLY_CAPTCHA_WIDGET_HTML } from "./fixtures/pow"
 
 describe("browser challenge routing", () => {
   test("passes response headers into detection and routes an authoritative CF challenge to its waiter", async () => {
@@ -141,7 +142,14 @@ describe("browser challenge routing", () => {
     const fail = async () => {
       throw new Error("waiter must not run")
     }
-    const waiters = { cloudflare: fail, ddosGuard: fail, imperva: fail, akamai: fail, awsWaf: fail, dataDome: fail }
+    const waiters = {
+      cloudflare: fail,
+      ddosGuard: fail,
+      imperva: fail,
+      akamai: fail,
+      awsWaf: fail,
+      dataDome: fail,
+    }
 
     expect(await routeChallengeWait({} as Page, DATADOME_CAPTCHA, {}, 100, undefined, waiters, 403)).toEqual({
       challengeType: "datadome",
@@ -151,5 +159,20 @@ describe("browser challenge routing", () => {
       challengeType: "datadome",
       resolution: "ip-blocked",
     })
+  })
+
+  test("lets embedded proof-of-work widgets proceed without invoking a WAF waiter", async () => {
+    const fail = async () => {
+      throw new Error("waiter must not run")
+    }
+    const waiters = { cloudflare: fail, ddosGuard: fail, imperva: fail, akamai: fail, awsWaf: fail, dataDome: fail }
+
+    expect(await routeChallengeWait({} as Page, ALTCHA_WIDGET_HTML, {}, 100, undefined, waiters, 200)).toEqual({
+      challengeType: "altcha",
+      resolution: "ok",
+    })
+    expect(
+      await routeChallengeWait({} as Page, FRIENDLY_CAPTCHA_WIDGET_HTML, {}, 100, undefined, waiters, 200),
+    ).toEqual({ challengeType: "friendly-captcha", resolution: "ok" })
   })
 })

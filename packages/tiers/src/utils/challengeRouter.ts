@@ -63,6 +63,11 @@ export async function routeChallengeWait(
   // DuckDuckGo's anomaly wall is an interactive image puzzle, not a silent
   // challenge that resolves by waiting or by attempting Cloudflare controls.
   if (challengeType === "duckduckgo") return { challengeType, resolution: "captcha-required" }
+  // Provider widgets are solved after routing by solvePageCaptchas(). They are
+  // page content, not interstitial walls, so never send them through a WAF waiter.
+  if (challengeType === "altcha" || challengeType === "friendly-captcha") {
+    return { challengeType, resolution: "ok" }
+  }
   // Neither the DataDome slider nor its hard block resolves by waiting, so they never reach
   // a waiter: report them straight away and let the tier escalate.
   if (challengeType === "datadome") {
