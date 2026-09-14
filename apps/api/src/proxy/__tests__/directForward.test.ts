@@ -15,7 +15,7 @@ const chunked = (...chunks: Uint8Array[]): ReadableStream<Uint8Array> =>
   })
 
 const fetchFixture = (req: Request): Response => {
-  const { pathname } = new URL(req.url)
+  const { pathname, searchParams } = new URL(req.url)
   if (pathname === "/cookies") {
     const headers = new Headers({ "Content-Type": "text/html" })
     headers.append("Set-Cookie", "session=one; Expires=Wed, 21 Oct 2030 07:28:00 GMT; Path=/")
@@ -51,8 +51,8 @@ const fetchFixture = (req: Request): Response => {
     })
   if (pathname === "/duckduckgo-challenge")
     return new Response(
-      '<form id="challenge-form" action="//duckduckgo.com/anomaly.js?sv=html"><div data-testid="anomaly-modal"></div></form>',
-      { status: 202, headers: { "Content-Type": "text/html; charset=utf-8" } },
+      `<form id="challenge-form" action="//duckduckgo.com/anomaly.js?sv=html"><div data-testid="anomaly-modal"></div></form><p>${"x".repeat(5000)}</p>`,
+      { status: Number(searchParams.get("status") ?? 202), headers: { "Content-Type": "text/html; charset=utf-8" } },
     )
   if (pathname === "/video")
     return new Response(chunked(Buffer.from([0, 1, 2, 3]), Buffer.from([4, 5, 6, 7])), {
@@ -302,18 +302,21 @@ describe("directForwardHttp — buffered by default", () => {
     expect(result.body.toString()).toContain("Just a moment")
   })
 
-  test("detects a 202 DuckDuckGo anomaly challenge", async () => {
-    const result = await directForwardHttp({
-      url: `${baseUrl}/duckduckgo-challenge`,
-      method: "POST",
-      headers: {},
-    })
+  test("detects large DuckDuckGo anomaly challenges at 200 and 202", async () => {
+    for (const status of [200, 202]) {
+      const result = await directForwardHttp({
+        url: `${baseUrl}/duckduckgo-challenge?status=${status}`,
+        method: "POST",
+        headers: {},
+      })
 
-    expect(result.mode).toBe("buffer")
-    if (result.mode !== "buffer") return
-    expect(result.status).toBe(202)
-    expect(result.challengeDetected).toBe(true)
-    expect(result.body.toString()).toContain("anomaly-modal")
+      expect(result.mode).toBe("buffer")
+      if (result.mode !== "buffer") continue
+      expect(result.status).toBe(status)
+      expect(result.body.length).toBeGreaterThan(3000)
+      expect(result.challengeDetected).toBe(true)
+      expect(result.body.toString()).toContain("anomaly-modal")
+    }
   })
 
   test("detects a challenge in a compressed HTML response", async () => {

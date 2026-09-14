@@ -40,10 +40,23 @@ describe("DuckDuckGo anomaly challenge detection", () => {
     expect(isChallengeWall(200, DUCKDUCKGO_SEARCH_PAGE.length, "none")).toBe(false)
   })
 
-  test("does not classify a bare provider mention or text search query mentioning anomaly", () => {
-    const html = "<p>DuckDuckGo anomaly detection system documentation</p>"
-    expect(hasDuckDuckGoChallenge(html)).toBe(false)
-    expect(detectChallengeType(html)).toBe("none")
+  test("does not classify generic anomaly markers independently", () => {
+    const ordinaryPages = [
+      "<p>DuckDuckGo anomaly detection system documentation</p>",
+      '<form action="/anomaly.js">ordinary application form</form>',
+      '<div data-testid="anomaly-modal">ordinary test fixture</div>',
+      '<form id="challenge-form"><div class="anomaly-modal"></div></form>',
+    ]
+    for (const html of ordinaryPages) {
+      expect(hasDuckDuckGoChallenge(html)).toBe(false)
+      expect(detectChallengeType(html)).not.toBe("duckduckgo")
+    }
+  })
+
+  test("requires every structural marker for a non-provider anomaly endpoint", () => {
+    const html = '<form id="challenge-form" action="/anomaly.js"><div class="anomaly-modal__modal"></div></form>'
+    expect(hasDuckDuckGoChallenge(html)).toBe(true)
+    expect(detectChallengeType(html)).toBe("duckduckgo")
   })
 
   test("lets authoritative Cloudflare headers win", () => {

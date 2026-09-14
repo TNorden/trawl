@@ -141,14 +141,20 @@ export function hasDdosGuardChallenge(html: string, _headers: Record<string, str
   return false
 }
 
-// DuckDuckGo anti-bot anomaly challenge markers.
-// Ordinary DuckDuckGo search results do NOT contain anomaly.js or anomaly-modal elements.
+// DuckDuckGo's anomaly wall is an interactive image CAPTCHA. Require either its
+// provider-owned endpoint or all of the structural fallback markers: each generic
+// marker can occur independently in application pages and test fixtures.
 export function hasDuckDuckGoChallenge(html: string, _headers: Record<string, string> = {}): boolean {
-  if (/action=["'][^"']*\/anomaly\.js/i.test(html)) return true
-  if (/src=["'][^"']*\/anomaly\.js/i.test(html)) return true
-  if (/data-testid=["']anomaly-modal["']/i.test(html)) return true
-  if (/class=["'][^"']*anomaly-modal/i.test(html) && /challenge-form/i.test(html)) return true
-  return false
+  const providerEndpoint = /(?:action|src)=["'](?:https?:)?\/\/(?:html\.)?duckduckgo\.com\/anomaly\.js(?:[?"'])/i.test(
+    html,
+  )
+  if (providerEndpoint) return true
+
+  const anomalyEndpoint = /(?:action|src)=["'][^"']*\/anomaly\.js(?:[?"'])/i.test(html)
+  const challengeForm = /id=["']challenge-form["']/i.test(html)
+  const anomalyModal =
+    /data-testid=["']anomaly-modal["']/i.test(html) || /class=["'][^"']*\banomaly-modal(?:\b|__)/i.test(html)
+  return anomalyEndpoint && challengeForm && anomalyModal
 }
 
 // AWS WAF JavaScript challenge — the interstitial page that loads challenge.js to

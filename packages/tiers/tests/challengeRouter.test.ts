@@ -3,6 +3,7 @@ import type { Page } from "patchright"
 import { routeChallengeWait } from "../src/utils/challengeRouter"
 import { DATADOME_CAPTCHA, DATADOME_INTERSTITIAL, DATADOME_JSON_HARD_BLOCK } from "./fixtures/datadome"
 import { DDOS_GUARD_INTERSTITIAL } from "./fixtures/ddosGuard"
+import { DUCKDUCKGO_ANOMALY_CHALLENGE } from "./fixtures/duckduckgo"
 
 describe("browser challenge routing", () => {
   test("passes response headers into detection and routes an authoritative CF challenge to its waiter", async () => {
@@ -91,6 +92,22 @@ describe("browser challenge routing", () => {
       405,
     )
     expect(result).toEqual({ challengeType: "aws-waf", resolution: "captcha-required" })
+  })
+
+  test("reports a DuckDuckGo image challenge without invoking the Cloudflare waiter", async () => {
+    const fail = async () => {
+      throw new Error("waiter must not run")
+    }
+    const result = await routeChallengeWait(
+      {} as Page,
+      DUCKDUCKGO_ANOMALY_CHALLENGE,
+      {},
+      100,
+      undefined,
+      { cloudflare: fail, ddosGuard: fail, imperva: fail, akamai: fail, awsWaf: fail, dataDome: fail },
+      202,
+    )
+    expect(result).toEqual({ challengeType: "duckduckgo", resolution: "captcha-required" })
   })
 
   test("routes the DataDome Device Check to its dedicated waiter", async () => {

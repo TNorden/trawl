@@ -36,7 +36,6 @@ const DATACENTER_BLOCKED_REASONS: Partial<Record<ChallengeType, string>> = {
   "aws-waf": "datacenter-ip-blocked (AWS WAF token obtained but challenge persisted — needs residential proxy)",
   datadome:
     "datadome-persistent (a datadome cookie was issued but the wall held — check BROWSER_HEADFUL_POOL_SIZE, then try a residential proxy)",
-  duckduckgo: "datacenter-ip-blocked (DuckDuckGo anomaly challenge persisted — needs residential proxy)",
 }
 
 const DEFAULT_DATACENTER_BLOCKED_REASON =

@@ -60,6 +60,9 @@ export async function routeChallengeWait(
   if (getAwsWafAction(status, headers) === "captcha" || hasAwsWafCaptcha(html)) {
     return { challengeType: "aws-waf", resolution: "captcha-required" }
   }
+  // DuckDuckGo's anomaly wall is an interactive image puzzle, not a silent
+  // challenge that resolves by waiting or by attempting Cloudflare controls.
+  if (challengeType === "duckduckgo") return { challengeType, resolution: "captcha-required" }
   // Neither the DataDome slider nor its hard block resolves by waiting, so they never reach
   // a waiter: report them straight away and let the tier escalate.
   if (challengeType === "datadome") {

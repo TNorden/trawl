@@ -3,7 +3,7 @@
 // Navigates manually if cf_clearance is set but redirect hasn't fired after 5s.
 
 import type { Frame, Page } from "patchright"
-import { hasDuckDuckGoChallenge, hasTurnstile, isCloudflarePage } from "./detect"
+import { hasTurnstile, isCloudflarePage } from "./detect"
 
 export const CF_CHALLENGE_TITLE = /just a moment|verify you are human|please wait|one more step|attention required/i
 
@@ -42,7 +42,6 @@ export async function waitForChallengeResolution(
       const active =
         CF_CHALLENGE_TITLE.test(title) ||
         isCloudflarePage(html, responseHeaders()) ||
-        hasDuckDuckGoChallenge(html) ||
         /\/cdn-cgi\/challenge-platform|\/cdn-cgi\/challenge\//i.test(url) ||
         hasChallengeFrame
 
