@@ -21,6 +21,39 @@ describe("provider-specific proof-of-work widget detection", () => {
     expect(isCloudflarePage(ALTCHA_WIDGET_HTML, {})).toBe(false)
     expect(isBlocked(200, ALTCHA_WIDGET_HTML)).toBe(false)
     expect(isChallengeWall(200, ALTCHA_WIDGET_HTML.length, "altcha")).toBe(false)
+    expect(isChallengeWall(200, ALTCHA_WIDGET_HTML.length, "altcha", ALTCHA_WIDGET_HTML)).toBe(false)
+    expect(isChallengeWall(429, ALTCHA_WIDGET_HTML.length, "altcha")).toBe(true)
+  })
+
+  test("classifies dynamic ALTCHA script tags and escalates challenge walls", () => {
+    const dynamicAltchaWall = `<!DOCTYPE html>
+<html lang="en">
+<head><title>Captcha</title></head>
+<body>
+  <div class="header">...</div>
+  <div class="captcha-wrap"><p>JavaScript is required to complete this challenge. Please enable it and reload the page.</p></div>
+  <script type="module" src="/js/page_specific/altcha.js"></script>
+</body></html>`
+
+    expect(hasAltcha(dynamicAltchaWall)).toBe(true)
+    expect(detectChallengeType(dynamicAltchaWall)).toBe("altcha")
+    expect(needsJs(dynamicAltchaWall, {})).toBe(true)
+    expect(isChallengeWall(200, dynamicAltchaWall.length, "altcha", dynamicAltchaWall)).toBe(true)
+
+    // Alternative script tags (CDN, mjs, minified)
+    expect(
+      hasAltcha(
+        '<script async defer src="https://cdn.jsdelivr.net/npm/altcha/dist/altcha.min.js" type="module"></script>',
+      ),
+    ).toBe(true)
+    expect(hasAltcha('<script type="module" src="/assets/altcha.mjs"></script>')).toBe(true)
+
+    const embeddedDynamicWidget = `<html><head><title>Checkout</title></head><body>
+      <main>Order summary</main><div class="captcha-wrap"></div>
+      <script type="module" src="/assets/altcha.js"></script>
+    </body></html>`
+    expect(detectChallengeType(embeddedDynamicWidget)).toBe("altcha")
+    expect(isChallengeWall(200, embeddedDynamicWidget.length, "altcha", embeddedDynamicWidget)).toBe(false)
   })
 
   test("classifies Friendly Captcha v1 and v2 as embedded JS widgets", () => {
@@ -120,6 +153,30 @@ describe("in-page proof-of-work widget solvers", () => {
     expect(await solveAltcha(page, 500)).toBe(true)
     expect(selectors).toEqual(['altcha-widget input[type="checkbox"], altcha-widget .altcha-checkbox'])
     expect(selectors.some((selector) => selector.includes("submit"))).toBe(false)
+  })
+
+  test("bounds post-verification settling by the remaining solver deadline", async () => {
+    let calls = 0
+    const timeouts: number[] = []
+    const wait = ({ timeout }: { timeout: number }) => {
+      timeouts.push(timeout)
+      return new Promise<void>((resolve) => setTimeout(resolve, timeout))
+    }
+    const page = {
+      evaluate: async () => {
+        calls++
+        return calls === 1 || calls >= 4
+      },
+      locator: locator([]),
+      waitForNavigation: wait,
+      waitForFunction: (_predicate: () => boolean, options: { timeout: number }) => wait(options),
+    } as unknown as Page
+    const started = Date.now()
+
+    expect(await solveAltcha(page, 50)).toBe(true)
+    expect(timeouts).toHaveLength(2)
+    expect(Math.max(...timeouts)).toBeLessThanOrEqual(50)
+    expect(Date.now() - started).toBeLessThan(200)
   })
 
   test("retries Friendly Captcha v2 until its asynchronous provider frame is ready", async () => {

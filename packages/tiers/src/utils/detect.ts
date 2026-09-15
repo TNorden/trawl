@@ -103,11 +103,15 @@ export function hasCapChallenge(html: string): boolean {
   return /cap-widget|trycap\.dev|data-cap-/i.test(html)
 }
 
-// ALTCHA is a Web Component. Restrict static detection to the component or its
-// generated form field; the brand name and generic PoW wording also occur in
-// ordinary articles and integration documentation.
+// ALTCHA is a Web Component. Restrict static detection to the component, its
+// generated form field, or its widget script; the brand name and generic PoW
+// wording also occur in ordinary articles and integration documentation.
 export function hasAltcha(html: string): boolean {
-  return /<altcha-widget\b/i.test(html) || /<input\b[^>]*\bname\s*=\s*["']altcha["']/i.test(html)
+  return (
+    /<altcha-widget\b/i.test(html) ||
+    /<input\b[^>]*\bname\s*=\s*["']altcha["']/i.test(html) ||
+    /<script\b[^>]*\baltcha(?:[-_]widget)?(?:\.min)?\.[cm]?js\b/i.test(html)
+  )
 }
 
 // Friendly Captcha v1/v2 mount under .frc-captcha and publish one of these two
@@ -305,13 +309,33 @@ const LEAN_BODY_THRESHOLDS: Partial<Record<ChallengeType, number>> = {
   "ddos-guard": 3000,
 }
 
+export function hasChallengeWallMarkers(html: string): boolean {
+  if (
+    /<title\b[^>]*>(?:[^<]*[-|–—:]\s*)?(?:captcha|challenge|security\s*check|human\s*verification|bot\s*verification|just\s*a\s*moment|attention\s*required)\b/i.test(
+      html,
+    )
+  ) {
+    return true
+  }
+  if (/(?:enable\s+javascript|javascript\s+is\s+required)\s+to\s+complete\s+this\s+challenge/i.test(html)) {
+    return true
+  }
+  return false
+}
+
 // True if the response is a challenge wall (page access blocked) rather than a page
 // that happens to contain a captcha widget. 4xx/5xx is HTTP-standard; the lean-stub
-// checks are TRAWL-specific heuristics (CF's auto-resolving bootstrap and Imperva's
-// sensor cookie challenge can come at 200 with body < a few KB).
-export function isChallengeWall(status: number, bodyLength: number, challengeType: ChallengeType): boolean {
+// checks and interstitial markers are TRAWL-specific heuristics (CF's auto-resolving
+// bootstrap, Imperva's sensor cookie, and dynamic PoW challenge pages like Mojeek can
+// arrive at 200).
+export function isChallengeWall(
+  status: number,
+  bodyLength: number,
+  challengeType: ChallengeType,
+  html?: string,
+): boolean {
   if (challengeType === "none") return false
-  if (status === 403 || status === 503) return true
+  if (status === 403 || status === 429 || status === 503) return true
   // These four never serve real content alongside their wall, so the type alone settles
   // it. For datadome that leans on the header invariant documented in getDataDomeAction().
   if (
@@ -321,6 +345,7 @@ export function isChallengeWall(status: number, bodyLength: number, challengeTyp
     challengeType === "duckduckgo"
   )
     return true
+  if (html && hasChallengeWallMarkers(html)) return true
   const threshold = LEAN_BODY_THRESHOLDS[challengeType]
   if (threshold !== undefined && bodyLength < threshold) return true
   return false

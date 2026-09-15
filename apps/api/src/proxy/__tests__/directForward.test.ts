@@ -54,6 +54,11 @@ const fetchFixture = (req: Request): Response => {
       `<form id="challenge-form" action="//duckduckgo.com/anomaly.js?sv=html"><div data-testid="anomaly-modal"></div></form><p>${"x".repeat(5000)}</p>`,
       { status: Number(searchParams.get("status") ?? 202), headers: { "Content-Type": "text/html; charset=utf-8" } },
     )
+  if (pathname === "/altcha-challenge")
+    return new Response(
+      `<!DOCTYPE html><html><head><title>Captcha</title></head><body><div class="header">...</div><p>${"x".repeat(5000)}</p><div class="captcha-wrap"><p>JavaScript is required</p></div><script type="module" src="/js/page_specific/altcha.js"></script></body></html>`,
+      { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } },
+    )
   if (pathname === "/video")
     return new Response(chunked(Buffer.from([0, 1, 2, 3]), Buffer.from([4, 5, 6, 7])), {
       headers: { "Content-Type": "video/mp4" },
@@ -343,6 +348,21 @@ describe("directForwardHttp — buffered by default", () => {
     if (result.mode !== "buffer") return
     expect(result.status).toBe(200)
     expect(result.challengeDetected).toBe(true)
+  })
+
+  test("detects a 200 ALTCHA dynamic challenge wall positioned past 4 KiB", async () => {
+    const result = await directForwardHttp({
+      url: `${baseUrl}/altcha-challenge`,
+      method: "GET",
+      headers: {},
+    })
+
+    expect(result.mode).toBe("buffer")
+    if (result.mode !== "buffer") return
+    expect(result.status).toBe(200)
+    expect(result.body.length).toBeGreaterThan(4096)
+    expect(result.challengeDetected).toBe(true)
+    expect(result.body.toString()).toContain("altcha.js")
   })
 
   test("streams explicit video responses", async () => {
