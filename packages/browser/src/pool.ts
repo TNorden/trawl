@@ -21,9 +21,10 @@ const CLOSE_TIMEOUT_MS = 10_000
 // launch timeout does not cover. 90s is generous but finite.
 const LAUNCH_TIMEOUT_MS = 90_000
 
-/** Firefox must never silently retry a proxied navigation over the host's direct route. */
+/** Firefox must neither bypass a proxy nor resolve SOCKS destinations through host DNS. */
 export const PROXY_SAFETY_FIREFOX_PREFS = Object.freeze({
   "network.proxy.failover_direct": false,
+  "network.proxy.socks_remote_dns": true,
 })
 
 type AsyncAction = () => unknown | Promise<unknown>

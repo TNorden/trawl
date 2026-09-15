@@ -7,9 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-09-15
+
 ### Changed
+- Bump all application and internal package versions to `1.6.1`.
 - Publish rolling nightly images from the latest verified `dev` revision every day at 02:00 UTC instead of on stable `main` pushes, allow manual nightly dispatch, and cancel superseded nightly runs (#137).
 - Stop publishing the optional `-fonts` release flavor automatically. Published images remain compact and use Linux fingerprints; deployments needing the complete Windows/macOS/Linux font pool can build with `CAMOUFOX_KEEP_SPOOFED_OS_FONTS=1`.
+
+### Fixed
+- Resolve destination hostnames through configured SOCKS5 proxies instead of the container's local DNS, preventing DNS leaks and restoring access when the local resolver blocks or poisons the target domain (#136).
 
 ## [1.6.0] - 2026-09-15
 
