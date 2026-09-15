@@ -30,7 +30,7 @@ export {
   isCloudflarePage,
   needsJs,
 } from "./utils/detect"
-export { normalizeProxy, ProxyPool } from "./utils/proxyRotator"
+export { normalizeProxy, ProxyPool, type ProxySelection } from "./utils/proxyRotator"
 export {
   isValidMethod,
   proxySanitizeHeaders,

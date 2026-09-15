@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, spyOn, test } from "bun:test"
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -20,6 +20,23 @@ describe("ProxyPool", () => {
     }
   })
 
+  test("round-robins repeat requests to the same domain when selected", () => {
+    const pool = new ProxyPool(["http://p1:8080", "http://p2:8080", "http://p3:8080"], "roundrobin")
+    const picks = Array.from({ length: 4 }, () => pool.next("example.com"))
+    expect(picks).toEqual(["http://p1:8080", "http://p2:8080", "http://p3:8080", "http://p1:8080"])
+  })
+
+  test("randomly selects an available proxy when selected", () => {
+    const random = spyOn(Math, "random").mockReturnValue(0.75)
+    try {
+      const pool = new ProxyPool(["http://p1:8080", "http://p2:8080"], "random")
+      expect(pool.next("example.com")).toBe("http://p2:8080")
+      expect(pool.next("example.com")).toBe("http://p2:8080")
+    } finally {
+      random.mockRestore()
+    }
+  })
+
   test("markBad excludes the proxy and clears its sticky mapping", () => {
     const pool = new ProxyPool(["http://p1:8080", "http://p2:8080"])
     const first = pool.next("example.com")
@@ -31,6 +48,15 @@ describe("ProxyPool", () => {
     const after = pool.next("example.com")
     expect(after).not.toBe(first)
     expect(after).toBeTruthy()
+  })
+
+  test("round-robin cooldown skips only the blocked endpoint", () => {
+    const pool = new ProxyPool(["http://p1:8080", "http://p2:8080", "http://p3:8080"], "roundrobin")
+    expect(pool.next()).toBe("http://p1:8080")
+    pool.markBad("http://p1:8080")
+    expect(pool.next()).toBe("http://p2:8080")
+    expect(pool.next()).toBe("http://p3:8080")
+    expect(pool.next()).toBe("http://p2:8080")
   })
 
   test("returns undefined once every proxy is marked bad", () => {
@@ -93,6 +119,11 @@ describe("ProxyPool", () => {
       writeFileSync(file, "http://p2:8080\n")
       const pool = ProxyPool.fromEnv("http://p1:8080", file)
       expect(pool?.size).toBe(2)
+    })
+
+    test("applies the configured selection policy", () => {
+      const pool = ProxyPool.fromEnv("http://p1:8080,http://p2:8080", undefined, "roundrobin")
+      expect([pool?.next("example.com"), pool?.next("example.com")]).toEqual(["http://p1:8080", "http://p2:8080"])
     })
   })
 })

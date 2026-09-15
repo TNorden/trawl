@@ -423,6 +423,7 @@ for pool and mounted-file examples.
 | `REDIS_URL`                      | —                        | Redis connection string; empty or unset disables the Redis cache                     |
 | `REDIS_CONNECT_TIMEOUT_MS`       | `5000`                   | Maximum time for each Redis connection attempt                                      |
 | `REDIS_RETRY_DELAY_MS`           | `5000`                   | Delay before reconnecting after startup failure; `0` disables retry                 |
+| `SCRAPE_PROXY_SELECTION`         | `failover`               | Pool policy: sticky `failover`, per-request `roundrobin`, or `random`                |
 | `PROXY_URL`                      | —                        | Optional Tier 3 HTTP or SOCKS5 proxy, or comma-separated pool                       |
 | `PROXY_LIST_FILE`                | —                        | File containing one Tier 3 proxy URL per line                                       |
 | `RESIDENTIAL_PROXY_URL`          | —                        | Enables Tier 4 proxy escalation                                                     |

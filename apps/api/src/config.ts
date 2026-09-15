@@ -1,4 +1,4 @@
-import { ProxyPool } from "@trawl/tiers"
+import { ProxyPool, type ProxySelection } from "@trawl/tiers"
 
 export const REDIS_URL = process.env.REDIS_URL?.trim() || undefined
 export type SessionCacheDriver = "redis" | "memory"
@@ -23,6 +23,14 @@ export const parseScrapeMinTier = (value: string | undefined): 1 | 2 | 3 | 4 => 
   const parsed = Number(value)
   if (isTier(parsed)) return parsed
   throw new Error(`Invalid SCRAPE_MIN_TIER ${JSON.stringify(value)}; expected 1, 2, 3, or 4`)
+}
+
+export const parseProxySelection = (value: string | undefined): ProxySelection => {
+  const normalized = value?.trim().toLowerCase() || "failover"
+  if (normalized === "failover" || normalized === "roundrobin" || normalized === "random") return normalized
+  throw new Error(
+    `Invalid SCRAPE_PROXY_SELECTION ${JSON.stringify(value)}; expected "failover", "roundrobin", or "random"`,
+  )
 }
 
 export const PORT = integerInRange(process.env.PORT, 8_191, 1, 65_535)
@@ -53,6 +61,7 @@ export const HEADFUL_POOL_SIZE = nonNegativeInteger(process.env.BROWSER_HEADFUL_
 // Deployment-wide lower bound for every scraper entry point. Invalid values fail
 // closed so a typo cannot unexpectedly re-enable a direct Tier 1 request.
 export const SCRAPE_MIN_TIER = parseScrapeMinTier(process.env.SCRAPE_MIN_TIER)
+export const SCRAPE_PROXY_SELECTION = parseProxySelection(process.env.SCRAPE_PROXY_SELECTION)
 
 // Optional MCP Streamable HTTP endpoint. Keep this disabled unless the API is
 // reachable only by trusted clients; v1 intentionally has no authentication.
@@ -76,10 +85,11 @@ export const LAUNCH_TIMEOUT_MS = positiveInteger(process.env.BROWSER_LAUNCH_TIME
 // PROXY_URL / RESIDENTIAL_PROXY_URL accept a comma-separated list of proxy URLs (a single
 // URL still works — it's just a 1-element list). *_LIST_FILE is an alternative source
 // (one proxy per line) for lists too large for a single env var.
-export const proxyPool = ProxyPool.fromEnv(process.env.PROXY_URL, process.env.PROXY_LIST_FILE)
+export const proxyPool = ProxyPool.fromEnv(process.env.PROXY_URL, process.env.PROXY_LIST_FILE, SCRAPE_PROXY_SELECTION)
 export const residentialProxyPool = ProxyPool.fromEnv(
   process.env.RESIDENTIAL_PROXY_URL,
   process.env.RESIDENTIAL_PROXY_LIST_FILE,
+  SCRAPE_PROXY_SELECTION,
 )
 
 // ── MITM forward-proxy mode ────────────────────────────────────────────────────

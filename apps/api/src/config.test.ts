@@ -11,6 +11,7 @@ type ConfigSnapshot = {
   recycleAfterContexts: number
   headfulPoolSize: number
   scrapeMinTier: number
+  scrapeProxySelection: string
   stallTimeoutMs: number
   closeTimeoutMs: number
   launchTimeoutMs: number
@@ -32,6 +33,7 @@ const readConfig = (overrides: Record<string, string>): ConfigSnapshot => {
       recycleAfterContexts: config.RECYCLE_AFTER_TEMPORARY_CONTEXTS,
       headfulPoolSize: config.HEADFUL_POOL_SIZE,
       scrapeMinTier: config.SCRAPE_MIN_TIER,
+      scrapeProxySelection: config.SCRAPE_PROXY_SELECTION,
       stallTimeoutMs: config.STALL_TIMEOUT_MS,
       closeTimeoutMs: config.CLOSE_TIMEOUT_MS,
       launchTimeoutMs: config.LAUNCH_TIMEOUT_MS,
@@ -62,6 +64,7 @@ describe("environment configuration", () => {
         BROWSER_RECYCLE_AFTER_CONTEXTS: "0",
         BROWSER_HEADFUL_POOL_SIZE: "2",
         SCRAPE_MIN_TIER: "3",
+        SCRAPE_PROXY_SELECTION: " RoUnDrObIn ",
         BROWSER_STALL_TIMEOUT_MS: "90000",
         BROWSER_CLOSE_TIMEOUT_MS: "8000",
         BROWSER_LAUNCH_TIMEOUT_MS: "45000",
@@ -79,6 +82,7 @@ describe("environment configuration", () => {
       recycleAfterContexts: 0,
       headfulPoolSize: 2,
       scrapeMinTier: 3,
+      scrapeProxySelection: "roundrobin",
       stallTimeoutMs: 90000,
       closeTimeoutMs: 8000,
       launchTimeoutMs: 45000,
@@ -102,6 +106,7 @@ describe("environment configuration", () => {
         BROWSER_RECYCLE_AFTER_CONTEXTS: "-1",
         BROWSER_HEADFUL_POOL_SIZE: "1.5",
         SCRAPE_MIN_TIER: "",
+        SCRAPE_PROXY_SELECTION: "",
         BROWSER_STALL_TIMEOUT_MS: "Infinity",
         BROWSER_CLOSE_TIMEOUT_MS: "0",
         BROWSER_LAUNCH_TIMEOUT_MS: "unsafe",
@@ -119,6 +124,7 @@ describe("environment configuration", () => {
       recycleAfterContexts: 8,
       headfulPoolSize: 0,
       scrapeMinTier: 1,
+      scrapeProxySelection: "failover",
       stallTimeoutMs: 180000,
       closeTimeoutMs: 10000,
       launchTimeoutMs: 90000,
@@ -147,5 +153,18 @@ describe("environment configuration", () => {
 
     expect(result.exitCode).not.toBe(0)
     expect(result.stderr.toString()).toContain('Invalid SCRAPE_MIN_TIER "browser"; expected 1, 2, 3, or 4')
+  })
+
+  test("rejects an unknown proxy selection policy", () => {
+    const result = Bun.spawnSync({
+      cmd: [process.execPath, "-e", 'await import("./config.ts")'],
+      cwd: import.meta.dir,
+      env: { ...process.env, SCRAPE_PROXY_SELECTION: "rotate" },
+    })
+
+    expect(result.exitCode).not.toBe(0)
+    expect(result.stderr.toString()).toContain(
+      'Invalid SCRAPE_PROXY_SELECTION "rotate"; expected "failover", "roundrobin", or "random"',
+    )
   })
 })

@@ -454,11 +454,28 @@ For a single endpoint or a short pool, a local `.env` beside `docker-compose.yml
 RESIDENTIAL_PROXY_URL=http://user:pass@residential.example.com:8080
 ```
 
-The supplied Compose files pass all four proxy variables into the container.
+The supplied Compose files pass the proxy pool sources and selection policy into the container.
 
 ### Rotation and failure handling
 
-When more than one proxy is configured, TRAWL picks proxies **sticky-per-domain** — repeat requests to the same hostname keep reusing the same proxy (helps avoid re-triggering challenges), while different domains spread round-robin across the pool. If a tier attempt comes back `"blocked"` using a pool-sourced proxy, that proxy is put in a 5-minute cooldown and the request retries once with the next available proxy before falling through (Tier 3 → Tier 4, or Tier 4 failing outright) — bounded to 2 attempts per tier so a long list can't blow the request's `maxTimeout`.
+`SCRAPE_PROXY_SELECTION` controls how both datacenter and residential pools choose an endpoint:
+
+| Value | Behavior |
+| --- | --- |
+| `failover` (default) | Keeps a proxy sticky per domain. New domains spread round-robin, and a domain moves only after its proxy is blocked. This best preserves IP continuity for challenge-heavy targets. |
+| `roundrobin` | Chooses the next healthy endpoint whenever a request enters Tier 3 or Tier 4, including repeat requests to the same hostname. |
+| `random` | Randomly chooses a healthy endpoint whenever a request enters Tier 3 or Tier 4. |
+
+Selection happens only when a request actually reaches a proxy-backed tier. A request completed by
+Tier 1 or cached Tier 2 does not advance the pool; use `SCRAPE_MIN_TIER=3` when every scrape must
+enter proxy selection. The setting rotates configured endpoints, not the exit IP behind a single
+provider-managed rotating gateway. Rotation state is local to each TRAWL process and is not
+coordinated across replicas.
+
+The selected proxy stays fixed for the whole tier attempt, including a headful retry. If an attempt
+comes back `"blocked"`, the endpoint enters a 5-minute cooldown and that request retries once with
+the next available proxy before falling through (Tier 3 → Tier 4, or Tier 4 failing outright). The
+two-attempt limit prevents a large list from exhausting the request's `maxTimeout`.
 
 ### Per-request override
 
