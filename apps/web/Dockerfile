@@ -1,4 +1,4 @@
-FROM oven/bun:1.4.0-alpine AS builder
+FROM oven/bun:1.4.2-alpine AS builder
 
 WORKDIR /app
 
@@ -8,7 +8,7 @@ RUN bun --bun install
 COPY . ./
 RUN bunx --bun nuxt generate
 
-FROM nginx:alpine AS runner
+FROM nginx:1.30.4-alpine AS runner
 
 COPY --from=builder /app/.output/public /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
