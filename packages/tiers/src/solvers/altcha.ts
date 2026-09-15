@@ -84,7 +84,19 @@ export async function solveAltcha(page: Page, timeoutMs = 30_000): Promise<boole
     while (Date.now() < deadline) {
       if (await altchaVerified(page)) {
         if (typeof page.waitForNavigation === "function") {
-          await page.waitForNavigation({ timeout: 2500, waitUntil: "domcontentloaded" }).catch(() => {})
+          const settles: Promise<unknown>[] = [
+            page.waitForNavigation({ timeout: 6000, waitUntil: "load" }).catch(() => {}),
+          ]
+          if (typeof page.waitForFunction === "function") {
+            settles.push(
+              page
+                .waitForFunction(() => !document.querySelector("altcha-widget, #altcha-form, .captcha-wrap"), {
+                  timeout: 6000,
+                })
+                .catch(() => {}),
+            )
+          }
+          await Promise.race(settles)
         }
         return true
       }
