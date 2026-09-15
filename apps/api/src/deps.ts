@@ -16,6 +16,7 @@ import {
   REDIS_SESSION_TTL_SECONDS,
   REDIS_URL,
   residentialProxyPool,
+  SCRAPE_MIN_TIER,
   SESSION_CACHE_DRIVER,
   type SessionCacheDriver,
   STALL_TIMEOUT_MS,
@@ -242,5 +243,6 @@ export const getDeps = (): OrchestratorDeps => {
         .catch(() => {}) ?? Promise.resolve(),
     proxyPool,
     residentialProxyPool,
+    minTier: SCRAPE_MIN_TIER,
   }
 }

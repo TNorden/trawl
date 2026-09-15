@@ -41,7 +41,8 @@ Accept-Encoding: gzip, deflate, br
 
 **Escalates for:** recognized Cloudflare, Akamai, or Imperva challenge responses and blocked status codes such as 403 or 429. Detection uses provider-specific headers and HTML markers.
 
-**Skip with:** `skipHttp: true` in the request body, or `maxTier: 1` to cap at Tier 1.
+**Skip with:** `skipHttp: true` in the request body, or deployment-wide `SCRAPE_MIN_TIER=2`.
+Use `maxTier: 1` to cap execution at Tier 1 instead.
 
 ## Tier 2 — Cached Browser Session
 

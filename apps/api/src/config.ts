@@ -16,6 +16,14 @@ const integerInRange = (value: string | undefined, fallback: number, min: number
 }
 const positiveInteger = (value: string | undefined, fallback: number): number => integerInRange(value, fallback, 1)
 const nonNegativeInteger = (value: string | undefined, fallback: number): number => integerInRange(value, fallback, 0)
+const isTier = (tier: number): tier is 1 | 2 | 3 | 4 => tier === 1 || tier === 2 || tier === 3 || tier === 4
+
+export const parseScrapeMinTier = (value: string | undefined): 1 | 2 | 3 | 4 => {
+  if (value === undefined || value.trim() === "") return 1
+  const parsed = Number(value)
+  if (isTier(parsed)) return parsed
+  throw new Error(`Invalid SCRAPE_MIN_TIER ${JSON.stringify(value)}; expected 1, 2, 3, or 4`)
+}
 
 export const PORT = integerInRange(process.env.PORT, 8_191, 1, 65_535)
 export const POOL_SIZE = positiveInteger(process.env.BROWSER_POOL_SIZE, 3)
@@ -42,6 +50,9 @@ export const BROWSER_MAX_CONTENT_PROCESSES = positiveInteger(process.env.BROWSER
 // plus its X display measures ~380 MB, which would silently move the memory ceiling of a
 // deployment that never meets DataDome. Set it to 1 to scrape DataDome targets.
 export const HEADFUL_POOL_SIZE = nonNegativeInteger(process.env.BROWSER_HEADFUL_POOL_SIZE, 0)
+// Deployment-wide lower bound for every scraper entry point. Invalid values fail
+// closed so a typo cannot unexpectedly re-enable a direct Tier 1 request.
+export const SCRAPE_MIN_TIER = parseScrapeMinTier(process.env.SCRAPE_MIN_TIER)
 
 // Optional MCP Streamable HTTP endpoint. Keep this disabled unless the API is
 // reachable only by trusted clients; v1 intentionally has no authentication.
@@ -88,7 +99,6 @@ export const MITM_HOST = process.env.MITM_HOST ?? "0.0.0.0"
 export const MITM_CA_DIR = process.env.MITM_CA_DIR ?? "/data/proxy-ca"
 // Cap the tier the proxy will escalate to (e.g. keep it off residential Tier 4).
 const configuredMaxTier = Number(process.env.MITM_MAX_TIER)
-const isTier = (tier: number): tier is 1 | 2 | 3 | 4 => tier === 1 || tier === 2 || tier === 3 || tier === 4
 export const MITM_MAX_TIER = isTier(configuredMaxTier) ? configuredMaxTier : undefined
 // Skip the proxy's direct Tier 0 probe and route ordinary HTTP requests into scrape().
 // This is separate from ScrapeRequest.skipHttp, which controls scraper Tier 1.
