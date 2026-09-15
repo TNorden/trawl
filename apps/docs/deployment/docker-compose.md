@@ -126,6 +126,7 @@ TRAWL and Redis.
 | `MEMORY_SESSION_CACHE_MAX_ENTRIES` | `1000`             | Maximum LRU-bounded entries for the memory driver                       |
 | `REDIS_CONNECT_TIMEOUT_MS`       | `5000`               | Maximum time for each Redis connection attempt                          |
 | `REDIS_RETRY_DELAY_MS`           | `5000`               | Background reconnect delay; `0` disables retry                          |
+| `SCRAPE_PROXY_SELECTION`         | `failover`           | Pool policy: `failover`, `roundrobin`, or `random`                       |
 | `PROXY_URL`                      | —                    | Optional Tier 3 datacenter proxy or pool                                |
 | `RESIDENTIAL_PROXY_URL`          | —                    | Enables Tier 4 proxy escalation                                         |
 | `MITM_ENABLED`                   | `false`              | Starts the general HTTP/HTTPS proxy                                     |
@@ -139,9 +140,9 @@ TRAWL and Redis.
 All supplied Compose files publish port `8192` and mount the `trawl_proxy_ca` volume. The listener
 does not start until `MITM_ENABLED=true`. See [Proxy Configuration](/proxy/configuration).
 
-All supplied Compose files also pass `PROXY_URL`, `PROXY_LIST_FILE`, `RESIDENTIAL_PROXY_URL`, and
-`RESIDENTIAL_PROXY_LIST_FILE` from the local environment or `.env` file. For a single residential
-endpoint:
+All supplied Compose files also pass `SCRAPE_PROXY_SELECTION`, `PROXY_URL`, `PROXY_LIST_FILE`,
+`RESIDENTIAL_PROXY_URL`, and `RESIDENTIAL_PROXY_LIST_FILE` from the local environment or `.env`
+file. For a single residential endpoint:
 
 ```ini
 # .env

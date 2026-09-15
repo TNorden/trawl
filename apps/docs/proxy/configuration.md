@@ -17,6 +17,7 @@ description: Enable and configure TRAWL's challenge-bypassing HTTP/HTTPS proxy.
 | `MITM_ALWAYS_SCRAPE` | `false`          | Skip direct Tier 0 and enter the scraper immediately     |
 | `MITM_DEBUG`         | `false`          | Logs proxied requests and tier attempts                  |
 | `SCRAPE_MIN_TIER`    | `1`              | Lowest tier once a request enters the scraper ladder     |
+| `SCRAPE_PROXY_SELECTION` | `failover`   | Tier 3/4 pool policy: failover, round-robin, or random   |
 
 Example:
 
@@ -28,6 +29,7 @@ MITM_CA_DIR=/data/proxy-ca
 MITM_MAX_TIER=4
 MITM_ALWAYS_SCRAPE=false
 SCRAPE_MIN_TIER=1
+SCRAPE_PROXY_SELECTION=failover
 MITM_DEBUG=false
 ```
 

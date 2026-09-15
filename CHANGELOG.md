@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Add `SCRAPE_PROXY_SELECTION=failover|roundrobin|random` for Tier 3 and Tier 4 proxy pools. The default preserves sticky per-domain challenge sessions, while opt-in round-robin or random selection can spread proxy-backed scrape requests across healthy endpoints (#129).
 - Add `SCRAPE_MIN_TIER=1|2|3|4` as a deployment-wide floor for `/scrape`, FlareSolverr `/v1`, MCP, and MITM scraper fallback requests. This lets operators bypass plain HTTP, cached sessions, or fresh direct browser solves when an earlier attempt would poison a target's fingerprint or bypass the intended proxy tier (#128).
 - Optional MHTML archive: `mhtml: true` on `POST /scrape` returns a bounded `multipart/related` archive of successful HTML pages from browser tiers. The rendered document is followed by the safely readable stylesheets, scripts, images, and fonts observed during the normal page lifetime; omitted resources are reported inside the archive (#125).
 - Optional `blockedEvidence` diagnostics for terminal `/scrape` failures, returning bounded challenge-wall HTML and an optional screenshot without changing the HTTP 500 failure semantics. Evidence covers all browser challenge detectors, stays within the request budget, and is omitted unless explicitly requested (#124).
