@@ -79,8 +79,9 @@ describe("BrowserPool mode", () => {
 })
 
 describe("BrowserPool recycling", () => {
-  test("disables Firefox direct fallback for proxied navigations", () => {
+  test("prevents direct fallback and local DNS resolution for proxied navigations", () => {
     expect(PROXY_SAFETY_FIREFOX_PREFS["network.proxy.failover_direct"]).toBeFalse()
+    expect(PROXY_SAFETY_FIREFOX_PREFS["network.proxy.socks_remote_dns"]).toBeTrue()
   })
 
   test("publishes the first browser before warming remaining capacity concurrently", async () => {

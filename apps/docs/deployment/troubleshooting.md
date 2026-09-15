@@ -124,7 +124,7 @@ docker compose up -d --force-recreate
 
 1. **Cloudflare introduced a harder challenge** — Some sites use Turnstile or WAF rules that are harder to bypass. Check the API logs for the actual error.
 2. **Pool exhausted** — All browsers are busy. Increase `BROWSER_POOL_SIZE`.
-3. **Proxy not working** — If `PROXY_URL` is configured and invalid, Tier 3 will fail consistently. Test the proxy directly: `curl --proxy $PROXY_URL https://nowsecure.nl`.
+3. **Proxy not working** — If `PROXY_URL` is configured and invalid, Tier 3 will fail consistently. Test HTTP proxies with `curl --proxy "$PROXY_URL" https://nowsecure.nl`. For SOCKS5, test proxy-side DNS explicitly with `curl --proxy socks5h://host:port https://nowsecure.nl`; TRAWL enables the equivalent Firefox remote-DNS preference automatically.
 
 ## Prowlarr FlareSolverr test fails
 

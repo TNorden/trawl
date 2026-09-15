@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Publish rolling nightly images from the latest verified `dev` revision every day at 02:00 UTC instead of on stable `main` pushes, allow manual nightly dispatch, and cancel superseded nightly runs (#137).
+- Stop publishing the optional `-fonts` release flavor automatically. Published images remain compact and use Linux fingerprints; deployments needing the complete Windows/macOS/Linux font pool can build with `CAMOUFOX_KEEP_SPOOFED_OS_FONTS=1`.
+
+### Fixed
+- Resolve destination hostnames through configured SOCKS5 proxies instead of the container's local DNS, preventing DNS leaks and restoring access when the local resolver blocks or poisons the target domain (#136).
+
+## [1.6.0] - 2026-09-15
+
+### Changed
+- Bump all application and internal package versions to `1.6.0`.
+- Refresh compatible runtime, browser, build, and container dependencies for the release.
+
 ### Added
 - Add `SCRAPE_PROXY_SELECTION=failover|roundrobin|random` for Tier 3 and Tier 4 proxy pools. The default preserves sticky per-domain challenge sessions, while opt-in round-robin or random selection can spread proxy-backed scrape requests across healthy endpoints (#129).
 - Add `SCRAPE_MIN_TIER=1|2|3|4` as a deployment-wide floor for `/scrape`, FlareSolverr `/v1`, MCP, and MITM scraper fallback requests. This lets operators bypass plain HTTP, cached sessions, or fresh direct browser solves when an earlier attempt would poison a target's fingerprint or bypass the intended proxy tier (#128).

@@ -1,5 +1,5 @@
 # ── Stage 1: install workspace deps (runs natively on build host) ──────────────
-FROM oven/bun:1.4.0 AS deps
+FROM oven/bun:1.4.2 AS deps
 WORKDIR /app
 
 # nodejs/python3/make/g++ are needed to compile better-sqlite3 (camoufox-js dep)
@@ -40,7 +40,7 @@ RUN bun install --frozen-lockfile --production --omit=dev --linker=hoisted \
          node_modules/impit-win32-*
 
 # ── Stage 2: fetch the Camoufox Firefox binary (pinned version) ─────
-FROM oven/bun:1.4.0 AS camoufox
+FROM oven/bun:1.4.2 AS camoufox
 ENV CAMOUFOX_INSTALL_DIR=/opt/camoufox
 
 ARG UBO_VERSION=1.74.0
@@ -61,17 +61,17 @@ ARG TARGETARCH
 ARG CAMOUFOX_KEEP_SPOOFED_OS_FONTS=0
 RUN --mount=type=secret,id=GITHUB_TOKEN,env=GITHUB_TOKEN \
     case "$TARGETARCH" in \
-      amd64) ZIP="camoufox-152.0.4-beta.29-lin.x86_64.zip"; SHA256="1bea4b55a51c88e82dc7d426d9c75093d942d2afc8c911cb8fc78ebf723d686c" ;; \
-      arm64) ZIP="camoufox-152.0.4-beta.29-lin.arm64.zip"; SHA256="c8844c03f3c233d6a466d59fd3f4e6f21470bd685e1b7cc82d650379a9b23e35" ;; \
+      amd64) ZIP="camoufox-152.0.4-beta.30-lin.x86_64.zip"; SHA256="5720d45b894ce1770543de024c6f10d514b38be560fa2dc3226b3d8586caf672" ;; \
+      arm64) ZIP="camoufox-152.0.4-beta.30-lin.arm64.zip"; SHA256="60447260af8bebdb0ec3f2aa72f687b879e5598367303de2e3fdbc7a5be8c124" ;; \
       *) echo "unsupported arch: $TARGETARCH"; exit 1 ;; \
     esac && \
     curl -fsSL \
-      "https://github.com/daijro/camoufox/releases/download/v152.0.4-beta.29/${ZIP}" \
+      "https://github.com/daijro/camoufox/releases/download/v152.0.4-beta.30/${ZIP}" \
       -o /tmp/camoufox.zip && \
     echo "${SHA256}  /tmp/camoufox.zip" | sha256sum --check --strict - && \
     unzip -q /tmp/camoufox.zip -d /opt/camoufox && \
     rm /tmp/camoufox.zip && \
-    printf '{"version":"152.0.4","release":"beta.29"}\n' > /opt/camoufox/version.json && \
+    printf '{"version":"152.0.4","release":"beta.30"}\n' > /opt/camoufox/version.json && \
     chmod -R 755 /opt/camoufox && \
     if [ "$CAMOUFOX_KEEP_SPOOFED_OS_FONTS" != "1" ]; then \
       rm -rf /opt/camoufox/fonts/macos /opt/camoufox/fonts/windows; \
@@ -149,7 +149,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # arm64 has no baseline variant — every armv8 CPU is supported by the standard
 # `bun-linux-aarch64.zip` binary.
 ARG TARGETARCH
-ARG BUN_VERSION=1.4.0
+ARG BUN_VERSION=1.4.2
 RUN set -eux; \
     case "$TARGETARCH" in \
       amd64) BUN_ZIP=bun-linux-x64-baseline.zip ;; \

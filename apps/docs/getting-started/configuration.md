@@ -394,6 +394,11 @@ PROXY_URL=http://user:pass@dc-proxy.example.com:8080
 PROXY_URL=socks5://dc-proxy.example.com:1080
 ```
 
+SOCKS5 destination hostnames are resolved by the proxy rather than the TRAWL host. This avoids
+local DNS leaks and allows the proxy resolver to reach domains blocked or poisoned by the local
+network. Use the standard `socks5://` form shown above; `socks5h://` is a curl-specific spelling and
+is not accepted by the browser API.
+
 HTTP credentials can be embedded in the URL. For multiple endpoints, use a comma-separated list:
 
 ```ini
@@ -495,7 +500,8 @@ Test an HTTP proxy independently before starting TRAWL:
 curl --proxy http://user:pass@proxy.example.com:8080 https://api.ipify.org
 ```
 
-For SOCKS5 with proxy-side DNS resolution:
+For SOCKS5, use curl's `socks5h://` spelling to test the same proxy-side DNS behavior TRAWL enables
+in Firefox:
 
 ```bash
 curl --proxy socks5h://proxy.example.com:1080 https://api.ipify.org
