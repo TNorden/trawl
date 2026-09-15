@@ -80,11 +80,10 @@ docker build \
   -t trawl .
 ```
 
-This adds approximately 891 MB to the image. Modern releases are also published prebuilt this way
-as `ghcr.io/germondai/trawl:<version>-fonts` / `:latest-fonts`, so deployments needing Windows and
-macOS profiles do not need to build locally. Other build arguments pin or validate bundled
-dependencies and normally should not be overridden: `UBO_VERSION`, `UBO_AMO_FILE_ID`, `UBO_SHA256`,
-`GEOLITE_CITY_MIN_BYTES`, and (for the baseline image) `BUN_VERSION`.
+This adds approximately 891 MB to the image and is intentionally available only as a custom build.
+Published images remain compact and use Linux fingerprints. Other build arguments pin or validate
+bundled dependencies and normally should not be overridden: `UBO_VERSION`, `UBO_AMO_FILE_ID`,
+`UBO_SHA256`, `GEOLITE_CITY_MIN_BYTES`, and (for the baseline image) `BUN_VERSION`.
 
 ::: warning Build context
 Both API Dockerfiles (`apps/api/Dockerfile` and `apps/api/Dockerfile.baseline`) require the **repo root** as the build context because they copy workspace packages (`packages/types`, `packages/browser`, `packages/tiers`). Always run `docker build` from the repo root with `-f apps/api/Dockerfile` (or `-f apps/api/Dockerfile.baseline`).
