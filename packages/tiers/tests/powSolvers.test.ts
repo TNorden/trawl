@@ -21,6 +21,32 @@ describe("provider-specific proof-of-work widget detection", () => {
     expect(isCloudflarePage(ALTCHA_WIDGET_HTML, {})).toBe(false)
     expect(isBlocked(200, ALTCHA_WIDGET_HTML)).toBe(false)
     expect(isChallengeWall(200, ALTCHA_WIDGET_HTML.length, "altcha")).toBe(false)
+    expect(isChallengeWall(200, ALTCHA_WIDGET_HTML.length, "altcha", ALTCHA_WIDGET_HTML)).toBe(false)
+    expect(isChallengeWall(429, ALTCHA_WIDGET_HTML.length, "altcha")).toBe(true)
+  })
+
+  test("classifies dynamic ALTCHA script tags and escalates challenge walls", () => {
+    const dynamicAltchaWall = `<!DOCTYPE html>
+<html lang="en">
+<head><title>Captcha</title></head>
+<body>
+  <div class="header">...</div>
+  <div class="captcha-wrap"><p>JavaScript is required to complete this challenge. Please enable it and reload the page.</p></div>
+  <script type="module" src="/js/page_specific/altcha.js"></script>
+</body></html>`
+
+    expect(hasAltcha(dynamicAltchaWall)).toBe(true)
+    expect(detectChallengeType(dynamicAltchaWall)).toBe("altcha")
+    expect(needsJs(dynamicAltchaWall, {})).toBe(true)
+    expect(isChallengeWall(200, dynamicAltchaWall.length, "altcha", dynamicAltchaWall)).toBe(true)
+
+    // Alternative script tags (CDN, mjs, minified)
+    expect(
+      hasAltcha(
+        '<script async defer src="https://cdn.jsdelivr.net/npm/altcha/dist/altcha.min.js" type="module"></script>',
+      ),
+    ).toBe(true)
+    expect(hasAltcha('<script type="module" src="/assets/altcha.mjs"></script>')).toBe(true)
   })
 
   test("classifies Friendly Captcha v1 and v2 as embedded JS widgets", () => {

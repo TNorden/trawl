@@ -61,4 +61,34 @@ describe("runTier1 — full body on success (regression #46)", () => {
       restore()
     }
   })
+
+  test("returns the complete html for text responses larger than the 64 KiB detection preview", async () => {
+    const filler = `<p>${"x".repeat(100)}</p>\n`.repeat(800)
+    const html = `<html><body>${filler}<div id="the-end">done</div></body></html>`
+    expect(html.length).toBeGreaterThan(65536)
+    const restore = installFetchMock(() => htmlResponse(html))
+    try {
+      const result = await runTier1("https://example.com/very-large")
+      expect(result.status).toBe("success")
+      expect(result.html).toBe(html)
+      expect(new TextDecoder().decode(result.body)).toBe(html)
+    } finally {
+      restore()
+    }
+  })
+
+  test("detects challenges positioned past the legacy 4 KiB boundary", async () => {
+    const filler = `<!-- filler ${"x".repeat(100)} -->\n`.repeat(45)
+    const html = `<html><head><title>Captcha</title></head><body>${filler}<script type="module" src="/js/page_specific/altcha.js"></script></body></html>`
+    expect(html.indexOf("altcha.js")).toBeGreaterThan(4096)
+    expect(html.length).toBeLessThan(65536)
+    const restore = installFetchMock(() => htmlResponse(html))
+    try {
+      const result = await runTier1("https://example.com/altcha-deep")
+      expect(result.status).toBe("needs-js")
+      expect(result.challenge).toBe("altcha")
+    } finally {
+      restore()
+    }
+  })
 })

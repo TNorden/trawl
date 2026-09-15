@@ -127,8 +127,9 @@ export async function runTier1(
 
     // Decode a bounded preview losslessly for challenge detection — keeps the original
     // byte buffer untouched. `fatal: false` replaces invalid sequences with U+FFFD
-    // so detection helpers don't throw on non-UTF8 payloads.
-    const previewLen = Math.min(rawBytes.length, 4096)
+    // so detection helpers don't throw on non-UTF8 payloads. 64 KiB covers deep head
+    // and script tags in dynamic challenge pages (e.g. ALTCHA / PoW widgets).
+    const previewLen = Math.min(rawBytes.length, 65536)
     const previewText = new TextDecoder("utf-8", { fatal: false }).decode(rawBytes.subarray(0, previewLen))
 
     if (isCloudflarePage(previewText, responseHeaders)) {
@@ -312,7 +313,7 @@ export async function runTier1(
       effectiveUrl: res.url,
       // `html` is best-effort text view of the body — only meaningful for text-like
       // content-types. Empty for binary payloads so /scrape consumers see the body
-      // is binary via the contentType field. `previewText` is bounded to 4 KiB for
+      // is binary via the contentType field. `previewText` is bounded to 64 KiB for
       // challenge detection and must not be used as the response body — decode the
       // full buffer, reusing the preview only when it already covers the whole body.
       html: isTextContentType(contentType)
