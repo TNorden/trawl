@@ -49,7 +49,7 @@ Much faster and more reliable FlareSolverr & Byparr alternative and drop-in repl
     <tr>
       <td width="30%" align="center" valign="middle">
         <a href="https://go.nodemaven.com/germondaireadme" target="_blank">
-          <img width="760" height="280" alt="nodemaven" src="https://github.com/user-attachments/assets/5fe3b231-b712-42d1-bc70-23c934f1a0ef" />
+          <img width="760" height="280" alt="NodeMaven" src="https://github.com/user-attachments/assets/5fe3b231-b712-42d1-bc70-23c934f1a0ef" />
         </a>
       </td>
       <td valign="middle">
@@ -61,8 +61,25 @@ Much faster and more reliable FlareSolverr & Byparr alternative and drop-in repl
         • No KYC required<br>
         • Unique free tools: Proxy Bandwidth Checker, Meta Tag Checker, IP Lookup and others!<br><br>
         <b>Special codes for <a href="https://trawl.germondai.com" target="_blank">TRAWL</a> users:</b><br>
-        • TRAWL35 - 35% off to Mobile and Residential Proxies<br>
-        • TRAWL40 - 40% off to ISP (Static) Proxies
+        • <code>TRAWL35</code> - 35% off to Mobile and Residential Proxies<br>
+        • <code>TRAWL40</code> - 40% off to ISP (Static) Proxies
+      </td>
+    </tr>
+    <tr>
+      <td width="30%" align="center" valign="middle">
+        <a href="https://www.thordata.com/?ls=dtw&lk=dtw" target="_blank">
+          <img width="1254" height="1254" alt="Thordata" src="https://github.com/user-attachments/assets/32a5d8db-24c9-4779-b309-bdfdb32589f6" />
+        </a>
+      </td>
+      <td valign="middle">
+        <b><a href="https://www.thordata.com/?ls=dtw&lk=dtw" target="_blank">Thordata</a></b> - Premium Residential Proxies for Data Collection.<br><br>
+        <a href="https://www.thordata.com/?ls=dtw&lk=dtw" target="_blank">Thordata</a> helps developers build reliable scraping, automation, and AI data workflows with high-quality residential IPs.<br><br>
+        🌍 100M+ real IPs | 195+ countries<br>
+        🔄 Rotating & sticky sessions | Precise geo-targeting<br>
+        ⚡ High concurrency | Stable connections<br><br>
+        Reduce blocks and collect data at scale with confidence.<br><br>
+        <b>🎁 <a href="https://trawl.germondai.com" target="_blank">TRAWL</a> users:</b><br>
+        • 3-day free trial + 10% OFF Code: <code>TRAWL10</code>
       </td>
     </tr>
   </table>
