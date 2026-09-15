@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Local, provider-specific solving for embedded ALTCHA and Friendly Captcha v1/v2 proof-of-work widgets in browser tiers (#121).
 
 ### Fixed
+- Remove stale content-encoding and representation metadata from browser-backed MITM proxy responses after Playwright has decoded their bodies, preventing clients such as .NET `HttpClient` from attempting a second decompression while preserving raw Tier 1 responses (#126).
 - Detect DuckDuckGo anomaly challenge walls in Tier 1 and the MITM proxy, escalating them to browser tiers instead of returning challenge HTML as successful content (#119).
 
 ## [1.5.0] - 2026-09-04
