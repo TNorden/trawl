@@ -317,9 +317,6 @@ export function hasChallengeWallMarkers(html: string): boolean {
   ) {
     return true
   }
-  if (/\bclass\s*=\s*["'][^"']*\b(?:captcha-wrap|challenge-(?:form|container|stage|platform))\b/i.test(html)) {
-    return true
-  }
   if (/(?:enable\s+javascript|javascript\s+is\s+required)\s+to\s+complete\s+this\s+challenge/i.test(html)) {
     return true
   }

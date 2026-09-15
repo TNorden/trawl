@@ -83,21 +83,21 @@ export async function solveAltcha(page: Page, timeoutMs = 30_000): Promise<boole
 
     while (Date.now() < deadline) {
       if (await altchaVerified(page)) {
-        if (typeof page.waitForNavigation === "function") {
-          const settles: Promise<unknown>[] = [
-            page.waitForNavigation({ timeout: 6000, waitUntil: "load" }).catch(() => {}),
-          ]
-          if (typeof page.waitForFunction === "function") {
-            settles.push(
-              page
-                .waitForFunction(() => !document.querySelector("altcha-widget, #altcha-form, .captcha-wrap"), {
-                  timeout: 6000,
-                })
-                .catch(() => {}),
-            )
-          }
-          await Promise.race(settles)
+        const settleBudget = Math.min(6000, Math.max(0, deadline - Date.now()))
+        const settles: Promise<unknown>[] = []
+        if (settleBudget > 0 && typeof page.waitForNavigation === "function") {
+          settles.push(page.waitForNavigation({ timeout: settleBudget, waitUntil: "load" }).catch(() => {}))
         }
+        if (settleBudget > 0 && typeof page.waitForFunction === "function") {
+          settles.push(
+            page
+              .waitForFunction(() => !document.querySelector("altcha-widget, #altcha-form, .captcha-wrap"), {
+                timeout: settleBudget,
+              })
+              .catch(() => {}),
+          )
+        }
+        if (settles.length > 0) await Promise.race(settles)
         return true
       }
       await sleep(Math.min(POLL_INTERVAL_MS, Math.max(0, deadline - Date.now())))
