@@ -1,4 +1,4 @@
-FROM oven/bun:1.4.0-alpine AS builder
+FROM oven/bun:1.4.2-alpine AS builder
 
 # git is required by VitePress lastUpdated (reads commit timestamps)
 RUN apk add --no-cache git
@@ -11,7 +11,7 @@ RUN bun install
 COPY . ./
 RUN bun run build
 
-FROM nginx:alpine AS runner
+FROM nginx:1.30.4-alpine AS runner
 
 COPY --from=builder /app/.vitepress/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf

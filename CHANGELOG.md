@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-15
+
+### Changed
+- Bump all application and internal package versions to `1.6.0`.
+- Refresh compatible runtime, browser, build, and container dependencies for the release.
+
 ### Added
 - Add `SCRAPE_PROXY_SELECTION=failover|roundrobin|random` for Tier 3 and Tier 4 proxy pools. The default preserves sticky per-domain challenge sessions, while opt-in round-robin or random selection can spread proxy-backed scrape requests across healthy endpoints (#129).
 - Add `SCRAPE_MIN_TIER=1|2|3|4` as a deployment-wide floor for `/scrape`, FlareSolverr `/v1`, MCP, and MITM scraper fallback requests. This lets operators bypass plain HTTP, cached sessions, or fresh direct browser solves when an earlier attempt would poison a target's fingerprint or bypass the intended proxy tier (#128).
