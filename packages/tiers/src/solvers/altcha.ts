@@ -39,7 +39,7 @@ export async function solveAltcha(page: Page, timeoutMs = 30_000): Promise<boole
   const deadline = Date.now() + timeoutMs
 
   try {
-    if (!(await hasAltchaWidget(page, Math.min(3000, timeoutMs)))) return false
+    if (!(await hasAltchaWidget(page, Math.min(5000, timeoutMs)))) return false
     if (await altchaVerified(page)) return true
 
     // ALTCHA v3 exposes verify() on its Web Component. Start it without awaiting
@@ -82,7 +82,12 @@ export async function solveAltcha(page: Page, timeoutMs = 30_000): Promise<boole
     }
 
     while (Date.now() < deadline) {
-      if (await altchaVerified(page)) return true
+      if (await altchaVerified(page)) {
+        if (typeof page.waitForNavigation === "function") {
+          await page.waitForNavigation({ timeout: 2500, waitUntil: "domcontentloaded" }).catch(() => {})
+        }
+        return true
+      }
       await sleep(Math.min(POLL_INTERVAL_MS, Math.max(0, deadline - Date.now())))
     }
   } catch (err) {

@@ -127,9 +127,9 @@ export async function solvePageCaptchas(page: Page, timeoutMs = 30_000): Promise
   if (frameUrls.length > 0) console.log("[solvers] frames:", frameUrls.map((u) => u.slice(0, 80)).join(" | "))
 
   // waitForSelector already handles waiting for widgets — no blind sleep needed.
-  // 3s: Turnstile/reCAPTCHA iframes typically appear within 2s of page load;
-  // GeeTest/hCaptcha/Altcha/FriendlyCaptcha detect via HTML markers (instant). If nothing in 3s, skip.
-  const DETECT_MS = Math.min(3_000, Math.max(0, deadline - Date.now()))
+  // 5s: Turnstile/reCAPTCHA iframes typically appear within 2s of page load;
+  // dynamic script-mounted widgets (e.g. Mojeek ALTCHA) can take 2-4s to load module scripts.
+  const DETECT_MS = Math.min(5_000, Math.max(0, deadline - Date.now()))
 
   const [hasTurnstile, hasHcaptcha, hasRecaptcha, hasGeetest, hasAltcha, hasFriendlyCaptcha] = await Promise.all([
     mightHaveTurnstile ? detectTurnstile(page, DETECT_MS) : Promise.resolve(false),
