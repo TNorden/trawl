@@ -48,13 +48,13 @@ Much faster and more reliable FlareSolverr & Byparr alternative and drop-in repl
     </tr>
     <tr>
       <td width="30%" align="center" valign="middle">
-        <a href="https://go.nodemaven.com/germondaireadme" target="_blank">
-          <img width="760" height="280" alt="NodeMaven" src="https://github.com/user-attachments/assets/5fe3b231-b712-42d1-bc70-23c934f1a0ef" />
+        <a href="https://go.nodemaven.com/MediaCrawlerSeptember" target="_blank">
+          <img width="1047" height="262" alt="NodeMaven" src="https://github.com/user-attachments/assets/1e4e89c6-a574-462a-86bc-13c273117657" />
         </a>
       </td>
       <td valign="middle">
-        <b><a href="https://go.nodemaven.com/germondaireadme" target="_blank">NodeMaven</a></b> - The most efficient proxy provider for Web Scrapping and Automation with the Highest Quality IP on the market.<br><br>
-        <b>Why <a href="https://go.nodemaven.com/germondaireadme" target="_blank">NodeMaven</a>?</b><br>
+        <b><a href="https://go.nodemaven.com/MediaCrawlerSeptember" target="_blank">NodeMaven</a></b> - The most efficient proxy provider for Web Scrapping and Automation with the Highest Quality IP on the market.<br><br>
+        <b>Why <a href="https://go.nodemaven.com/MediaCrawlerSeptember" target="_blank">NodeMaven</a>?</b><br>
         • ZIP targeting<br>
         • 99.9% uptime<br>
         • IP filtering: all proxies have fraud score <97%<br>
