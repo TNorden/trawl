@@ -52,6 +52,16 @@ export interface ScrapeRequest {
   // CSS selector that also ends the settle window early. Only meaningful alongside
   // `captureResponses`.
   waitForSelector?: string
+  // Opt-in evidence from a challenge wall no tier could clear. Costs nothing on a
+  // successful scrape: it is only ever attached to the terminal failure (`blockedEvidence`
+  // on the 500 body), never to `ScrapeResult`. The image rides along only when
+  // `screenshot` is also set.
+  blockedEvidence?: boolean
+  // Opt-in MHTML archive of the page from the browser tiers (2-4), returned as
+  // `ScrapeResult.mhtml`. Assembled from the subresources the response listener observes,
+  // not snapshotted by the engine — Firefox has no Page.captureSnapshot. Off by default;
+  // only bounded, identity-encoded responses with a declared length are read.
+  mhtml?: boolean
 }
 
 // One browser console message. Shaped after WebDriver's browser log so a consumer can
@@ -92,6 +102,24 @@ export interface CapturedResponseEntry {
   base64Encoded: boolean
   truncated: boolean
   error?: string
+}
+
+// The challenge wall a scrape stopped at, from the last browser tier that rendered one.
+// Returned only on the failure path (`blockedEvidence` on the 500 body) and only when the
+// request asked for it — a blocked outcome is never dressed up as a successful result.
+export interface BlockedEvidence {
+  tier: 2 | 3 | 4
+  status: "blocked" | "timeout"
+  // Same string as the matching `timings[].reason`, e.g. "cloudflare-persistent".
+  reason?: string
+  // Where the browser actually stood when it gave up, after any challenge redirects.
+  url: string
+  statusCode?: number
+  html: string
+  // The wall's markup exceeded BLOCKED_EVIDENCE_MAX_HTML_CHARS and `html` is the head of it.
+  htmlTruncated?: boolean
+  // Base64 JPEG, present only when the request also asked for a `screenshot`.
+  screenshot?: string
 }
 
 export interface TierResult {
@@ -139,6 +167,11 @@ export interface ScrapeResult {
   // Present (possibly empty, meaning nothing matched) only when the request asked for
   // capture and a browser tier served the page.
   capturedResponses?: CapturedResponseEntry[]
+  // Multipart/related archive of a successful HTML page: the rendered document first,
+  // then safely readable CSS, script, image and font subresources observed loading. Same
+  // presence rules as `consoleLogs`. An approximation of browser "Save as MHTML", not a
+  // byte-faithful snapshot; omissions are counted inside the archive.
+  mhtml?: string
 }
 
 export interface SessionData {

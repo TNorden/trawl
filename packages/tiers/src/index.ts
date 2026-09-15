@@ -12,11 +12,14 @@ export {
   getAwsWafAction,
   getDataDomeAction,
   hasAkamaiChallenge,
+  hasAltcha,
   hasAwsWafCaptcha,
   hasAwsWafChallenge,
   hasDataDomeCaptcha,
   hasDataDomeChallenge,
   hasDdosGuardChallenge,
+  hasDuckDuckGoChallenge,
+  hasFriendlyCaptcha,
   hasHcaptcha,
   hasImpervaChallenge,
   hasRecaptcha,
@@ -27,7 +30,7 @@ export {
   isCloudflarePage,
   needsJs,
 } from "./utils/detect"
-export { normalizeProxy, ProxyPool } from "./utils/proxyRotator"
+export { normalizeProxy, ProxyPool, type ProxySelection } from "./utils/proxyRotator"
 export {
   isValidMethod,
   proxySanitizeHeaders,

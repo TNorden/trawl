@@ -5,8 +5,11 @@ import {
   getAwsWafAction,
   getDataDomeAction,
   hasAkamaiChallenge,
+  hasAltcha,
   hasAwsWafCaptcha,
   hasAwsWafChallenge,
+  hasDuckDuckGoChallenge,
+  hasFriendlyCaptcha,
   hasHcaptcha,
   hasRecaptcha,
   hasTurnstile,
@@ -142,6 +145,20 @@ export async function runTier1(
       }
     }
 
+    if (hasDuckDuckGoChallenge(previewText, responseHeaders)) {
+      return {
+        tier: 1,
+        status: "needs-js",
+        durationMs: Date.now() - start,
+        reason: "duckduckgo-anomaly-challenge",
+        challenge: "duckduckgo",
+        responseHeaders,
+        contentType,
+        body: rawBytes,
+        statusCode: res.status,
+      }
+    }
+
     // JS-only challenges: the page's static HTML is just a shell that loads the
     // captcha widget via <script src="...api.js">. Plain fetch sees the shell and
     // would otherwise report success — but the real content (including the widget)
@@ -180,6 +197,32 @@ export async function runTier1(
         durationMs: Date.now() - start,
         reason: "turnstile-shell",
         challenge: "cloudflare-turnstile",
+        responseHeaders,
+        contentType,
+        body: rawBytes,
+        statusCode: res.status,
+      }
+    }
+    if (hasAltcha(previewText)) {
+      return {
+        tier: 1,
+        status: "needs-js",
+        durationMs: Date.now() - start,
+        reason: "altcha-shell",
+        challenge: "altcha",
+        responseHeaders,
+        contentType,
+        body: rawBytes,
+        statusCode: res.status,
+      }
+    }
+    if (hasFriendlyCaptcha(previewText)) {
+      return {
+        tier: 1,
+        status: "needs-js",
+        durationMs: Date.now() - start,
+        reason: "friendly-captcha-shell",
+        challenge: "friendly-captcha",
         responseHeaders,
         contentType,
         body: rawBytes,

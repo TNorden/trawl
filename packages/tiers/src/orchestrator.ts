@@ -1,6 +1,6 @@
 import type { BrowserHandle } from "@trawl/browser"
 import { FINGERPRINT, FINGERPRINT_POOL } from "@trawl/browser"
-import type { Cookie, ScrapeRequest, ScrapeResult, SessionData, TierResult } from "@trawl/types"
+import type { BlockedEvidence, Cookie, ScrapeRequest, ScrapeResult, SessionData, TierResult } from "@trawl/types"
 import { runTier1 } from "./tiers/1"
 import { runTier2 } from "./tiers/2"
 import { runTier3 } from "./tiers/3"
@@ -20,10 +20,15 @@ const MAX_PROXY_ATTEMPTS = 2
 // wasn't reaching anyone outside the orchestrator.
 export class ScrapeError extends Error {
   timings: TierResult[]
-  constructor(message: string, timings: TierResult[]) {
+  // The challenge wall the last browser tier stopped at, when the caller asked for it.
+  // It rides the error rather than a `blocked` ScrapeResult on purpose: a wall is not a
+  // scrape, and callers keyed on the success shape must never be handed one.
+  blockedEvidence?: BlockedEvidence
+  constructor(message: string, timings: TierResult[], blockedEvidence?: BlockedEvidence) {
     super(message)
     this.name = "ScrapeError"
     this.timings = timings
+    this.blockedEvidence = blockedEvidence
   }
 }
 
@@ -41,6 +46,9 @@ export interface OrchestratorDeps {
   invalidateSession(domain: string): Promise<void>
   proxyPool?: ProxyPool
   residentialProxyPool?: ProxyPool
+  // Deployment-wide lower bound for the escalation ladder. API request flags may
+  // raise this floor, but never lower it.
+  minTier?: TierResult["tier"]
   onTierAttempt?: (result: TierResult) => void
   validateOutboundUrl?: (url: string) => Promise<void>
 }
@@ -70,12 +78,25 @@ export async function scrape(
   const totalStart = Date.now()
   const maxTimeout = req.maxTimeout ?? 60_000
   const maxTier = req.maxTier ?? 4
+  const minTier = Math.max(deps.minTier ?? 1, req.skipHttp ? 2 : 1) as TierResult["tier"]
   const timings: TierResult[] = []
   const domain = extractDomain(req.url)
   const explicitProxy = req.proxy
   const tier1Proxy = explicitProxy && /^https?:\/\//i.test(explicitProxy) ? explicitProxy : undefined
   const skipTier1ForProxy = Boolean(explicitProxy && !tier1Proxy)
 
+  if (minTier > maxTier) {
+    throw new ScrapeError(`Minimum tier ${minTier} exceeds max tier ${maxTier}`, timings)
+  }
+  const forcedTier4Proxy = minTier === 4 ? (req.proxy ?? deps.residentialProxyPool?.next(domain)) : undefined
+  if (minTier === 4 && !forcedTier4Proxy) {
+    throw new ScrapeError("Tier 4 requires RESIDENTIAL_PROXY_URL or a per-request proxy.", timings)
+  }
+
+  // Evidence from the last browser tier that rendered a wall it could not clear. Kept out
+  // of `timings` — that stays the thin, machine-readable attempt history — and reached
+  // only via the thrown ScrapeError.
+  let blockedEvidence: BlockedEvidence | undefined
   const capture = {
     consoleLogs: req.consoleLogs,
     networkLogs: req.networkLogs,
@@ -83,6 +104,15 @@ export async function scrape(
     captureResponses: req.captureResponses,
     settleTimeout: req.settleTimeout,
     waitForSelector: req.waitForSelector,
+    blockedEvidence: req.blockedEvidence
+      ? {
+          screenshot: req.screenshot,
+          report: (evidence: BlockedEvidence) => {
+            blockedEvidence = evidence
+          },
+        }
+      : undefined,
+    mhtml: req.mhtml,
   }
 
   const sanitizedHeaders = sanitizeHeaders(req.headers)
@@ -96,6 +126,7 @@ export async function scrape(
       networkLogs?: unknown
       redirectChain?: unknown
       capturedResponses?: unknown
+      mhtml?: unknown
     },
   ) => {
     const {
@@ -105,6 +136,7 @@ export async function scrape(
       networkLogs: _networkLogs,
       redirectChain: _redirectChain,
       capturedResponses: _capturedResponses,
+      mhtml: _mhtml,
       ...publicResult
     } = r
     timings.push(publicResult)
@@ -116,21 +148,28 @@ export async function scrape(
   let headful = false
 
   // Tier 1: plain HTTP fetch
-  if (!req.skipHttp && !skipTier1ForProxy && maxTier >= 1) {
-    const t1 = await runTier1(req.url, sanitizedHeaders, req.method, req.body, tier1Proxy, deps.validateOutboundUrl)
+  if (minTier <= 1 && !skipTier1ForProxy && maxTier >= 1) {
+    // Tier 1 has no browser handle, so select its identity up front and use the
+    // same UA for both the outbound request and the public result.
+    const tier1Fingerprint = FINGERPRINT_POOL[Math.floor(Math.random() * FINGERPRINT_POOL.length)] ?? FINGERPRINT
+    const t1 = await runTier1(
+      req.url,
+      { ...sanitizedHeaders, "User-Agent": tier1Fingerprint.userAgent },
+      req.method,
+      req.body,
+      tier1Proxy,
+      deps.validateOutboundUrl,
+    )
     emit(t1)
     if (explicitProxy && t1.status === "error" && t1.reason?.startsWith("proxy-")) {
       throw new ScrapeError(t1.reason, timings)
     }
     if (hasUsablePayload(t1)) {
-      // Tier 1 doesn't acquire a browser (it's a plain HTTP fetch). Use a random fingerprint
-      // UA from the pool so even Tier 1 requests don't share a single signature.
-      const tier1UA = FINGERPRINT_POOL[Math.floor(Math.random() * FINGERPRINT_POOL.length)].userAgent
       return {
         url: t1.effectiveUrl ?? req.url,
         html: normalizeHtml(t1.html ?? ""),
         cookies: [],
-        userAgent: tier1UA,
+        userAgent: tier1Fingerprint.userAgent,
         statusCode: t1.statusCode ?? 200,
         tier: 1,
         sessionCached: false,
@@ -146,7 +185,7 @@ export async function scrape(
   }
 
   if (maxTier < 2) {
-    throw new ScrapeError("Max tier reached without success", timings)
+    throw new ScrapeError("Max tier reached without success", timings, blockedEvidence)
   }
 
   // Acquire browser for tiers 2-4
@@ -165,7 +204,7 @@ export async function scrape(
 
   try {
     // Tier 2: browser with cached session
-    const session = explicitProxy ? undefined : await deps.loadSession(domain)
+    const session = minTier <= 2 && !explicitProxy ? await deps.loadSession(domain) : undefined
     if (session && maxTier >= 2) {
       const remaining = maxTimeout - (Date.now() - totalStart)
       const tier2Runner = runners.tier2 ?? runTier2
@@ -225,6 +264,7 @@ export async function scrape(
           networkLogs: t2.networkLogs,
           redirectChain: t2.redirectChain,
           capturedResponses: t2.capturedResponses,
+          mhtml: t2.mhtml,
         }
       }
       // Session failed — purge it
@@ -232,37 +272,25 @@ export async function scrape(
     }
 
     if (maxTier < 3) {
-      throw new ScrapeError("Max tier reached without success", timings)
+      throw new ScrapeError("Max tier reached without success", timings, blockedEvidence)
     }
 
-    // Tier 3: fresh challenge solve. Proxy resolves from (priority order) a per-request
-    // override, then the configured datacenter proxy pool, then none (server's own IP).
-    // On a "blocked" result from a pool-sourced proxy, mark it bad and retry with the
-    // next pool proxy before falling through to Tier 4. A per-request override has no
-    // fallback candidate, so it's tried exactly once.
-    let proxy3 = req.proxy ?? deps.proxyPool?.next(domain) ?? undefined
-    let t3: Awaited<ReturnType<typeof runTier3>>
-    for (let attempt = 0; ; attempt++) {
-      const remaining3 = maxTimeout - (Date.now() - totalStart)
-      const tier3Runner = runners.tier3 ?? runTier3
-      t3 = await tier3Runner(
-        req.url,
-        handle,
-        remaining3,
-        proxy3,
-        sanitizedHeaders,
-        req.method,
-        req.body,
-        deps.validateOutboundUrl,
-        req.screenshot,
-        capture,
-      )
-      if (t3.challenge === "datadome" && !handle.headful) {
-        await switchToHeadful()
+    let tier3Failure: string | undefined
+    if (minTier <= 3) {
+      // Tier 3: fresh challenge solve. Proxy resolves from (priority order) a per-request
+      // override, then the configured datacenter proxy pool, then none (server's own IP).
+      // On a "blocked" result from a pool-sourced proxy, mark it bad and retry with the
+      // next pool proxy before falling through to Tier 4. A per-request override has no
+      // fallback candidate, so it's tried exactly once.
+      let proxy3 = req.proxy ?? deps.proxyPool?.next(domain) ?? undefined
+      let t3: Awaited<ReturnType<typeof runTier3>>
+      for (let attempt = 0; ; attempt++) {
+        const remaining3 = maxTimeout - (Date.now() - totalStart)
+        const tier3Runner = runners.tier3 ?? runTier3
         t3 = await tier3Runner(
           req.url,
           handle,
-          maxTimeout - (Date.now() - totalStart),
+          remaining3,
           proxy3,
           sanitizedHeaders,
           req.method,
@@ -271,62 +299,82 @@ export async function scrape(
           req.screenshot,
           capture,
         )
-      }
+        if (t3.challenge === "datadome" && !handle.headful) {
+          await switchToHeadful()
+          t3 = await tier3Runner(
+            req.url,
+            handle,
+            maxTimeout - (Date.now() - totalStart),
+            proxy3,
+            sanitizedHeaders,
+            req.method,
+            req.body,
+            deps.validateOutboundUrl,
+            req.screenshot,
+            capture,
+          )
+        }
 
-      const pool = deps.proxyPool
-      if (t3.status !== "blocked" || req.proxy || !proxy3 || !pool || attempt + 1 >= MAX_PROXY_ATTEMPTS) break
-      pool.markBad(proxy3)
-      const next = pool.next(domain)
-      if (!next || next === proxy3) break
-      console.log(
-        `[orchestrator] Tier 3 proxy ${proxy3.replace(/\/\/[^@]*@/, "//**@")} blocked — retrying with next proxy`,
-      )
-      proxy3 = next
-    }
-    emit(t3)
-    if (hasUsablePayload(t3)) {
-      const cookies: Cookie[] = t3.cookies ?? []
-      if (cookies.length > 0 && !explicitProxy) {
-        await deps.saveSession(domain, {
+        const pool = deps.proxyPool
+        if (t3.status !== "blocked" || req.proxy || !proxy3 || !pool || attempt + 1 >= MAX_PROXY_ATTEMPTS) break
+        pool.markBad(proxy3)
+        const next = pool.next(domain)
+        if (!next || next === proxy3) break
+        console.log(
+          `[orchestrator] Tier 3 proxy ${proxy3.replace(/\/\/[^@]*@/, "//**@")} blocked — retrying with next proxy`,
+        )
+        proxy3 = next
+      }
+      emit(t3)
+      if (hasUsablePayload(t3)) {
+        const cookies: Cookie[] = t3.cookies ?? []
+        if (cookies.length > 0 && !explicitProxy) {
+          await deps.saveSession(domain, {
+            cookies,
+            userAgent: t3.userAgent ?? handle.fingerprint.userAgent,
+            savedAt: Date.now(),
+          })
+        }
+        return {
+          url: t3.effectiveUrl ?? req.url,
+          html: normalizeHtml(t3.html ?? ""),
           cookies,
-          userAgent: t3.userAgent ?? handle.fingerprint.userAgent,
-          savedAt: Date.now(),
-        })
+          userAgent: t3.userAgent ?? FINGERPRINT.userAgent,
+          statusCode: t3.statusCode ?? 200,
+          tier: 3,
+          sessionCached: false,
+          timings,
+          totalMs: Date.now() - totalStart,
+          captchasSolved: t3.captchasSolved,
+          proxyUsed: Boolean(proxy3),
+          body: t3.body,
+          responseHeaders: t3.responseHeaders,
+          contentType: t3.contentType,
+          screenshot: t3.screenshot,
+          consoleLogs: t3.consoleLogs,
+          networkLogs: t3.networkLogs,
+          redirectChain: t3.redirectChain,
+          capturedResponses: t3.capturedResponses,
+          mhtml: t3.mhtml,
+        }
       }
-      return {
-        url: t3.effectiveUrl ?? req.url,
-        html: normalizeHtml(t3.html ?? ""),
-        cookies,
-        userAgent: t3.userAgent ?? FINGERPRINT.userAgent,
-        statusCode: t3.statusCode ?? 200,
-        tier: 3,
-        sessionCached: false,
-        timings,
-        totalMs: Date.now() - totalStart,
-        captchasSolved: t3.captchasSolved,
-        proxyUsed: Boolean(proxy3),
-        body: t3.body,
-        responseHeaders: t3.responseHeaders,
-        contentType: t3.contentType,
-        screenshot: t3.screenshot,
-        consoleLogs: t3.consoleLogs,
-        networkLogs: t3.networkLogs,
-        redirectChain: t3.redirectChain,
-        capturedResponses: t3.capturedResponses,
-      }
+      tier3Failure = t3.reason ?? t3.status
     }
 
     if (maxTier < 4) {
-      throw new ScrapeError("Max tier reached without success", timings)
+      throw new ScrapeError("Max tier reached without success", timings, blockedEvidence)
     }
 
     // Tier 4: residential proxy escalation — requires at least one residential proxy,
     // supplied either per-request (req.proxy) or via the configured residential pool.
-    let proxy4 = req.proxy ?? deps.residentialProxyPool?.next(domain)
+    let proxy4 = forcedTier4Proxy ?? req.proxy ?? deps.residentialProxyPool?.next(domain)
     if (!proxy4) {
       throw new ScrapeError(
-        `Tier 3 failed (${t3.reason ?? t3.status}). Set RESIDENTIAL_PROXY_URL (or pass a proxy per-request) to enable Tier 4 proxy escalation.`,
+        tier3Failure
+          ? `Tier 3 failed (${tier3Failure}). Set RESIDENTIAL_PROXY_URL (or pass a proxy per-request) to enable Tier 4 proxy escalation.`
+          : "Tier 4 requires RESIDENTIAL_PROXY_URL or a per-request proxy.",
         timings,
+        blockedEvidence,
       )
     }
 
@@ -400,10 +448,11 @@ export async function scrape(
         networkLogs: t4.networkLogs,
         redirectChain: t4.redirectChain,
         capturedResponses: t4.capturedResponses,
+        mhtml: t4.mhtml,
       }
     }
 
-    throw new ScrapeError(`All tiers exhausted. Last failure: ${t4.reason ?? t4.status}`, timings)
+    throw new ScrapeError(`All tiers exhausted. Last failure: ${t4.reason ?? t4.status}`, timings, blockedEvidence)
   } finally {
     if (!handleReleased) deps.releaseBrowser(handle)
   }

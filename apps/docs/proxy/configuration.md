@@ -16,6 +16,8 @@ description: Enable and configure TRAWL's challenge-bypassing HTTP/HTTPS proxy.
 | `MITM_MAX_TIER`      | `4`              | Highest solver tier available to proxy escalation        |
 | `MITM_ALWAYS_SCRAPE` | `false`          | Skip direct Tier 0 and enter the scraper immediately     |
 | `MITM_DEBUG`         | `false`          | Logs proxied requests and tier attempts                  |
+| `SCRAPE_MIN_TIER`    | `1`              | Lowest tier once a request enters the scraper ladder     |
+| `SCRAPE_PROXY_SELECTION` | `failover`   | Tier 3/4 pool policy: failover, round-robin, or random   |
 
 Example:
 
@@ -26,6 +28,8 @@ MITM_PORT=8192
 MITM_CA_DIR=/data/proxy-ca
 MITM_MAX_TIER=4
 MITM_ALWAYS_SCRAPE=false
+SCRAPE_MIN_TIER=1
+SCRAPE_PROXY_SELECTION=failover
 MITM_DEBUG=false
 ```
 
@@ -37,8 +41,9 @@ proxy. An empty or invalid value uses the normal maximum of Tier 4.
 
 Set `MITM_ALWAYS_SCRAPE=true` for targets where the proxy's initial direct Tier 0 request is
 itself enough to trigger a temporary ban. This skips only proxy Tier 0: the normal scraper ladder
-still starts at its Tier 1 plain fetch and escalates when necessary. WebSocket upgrades remain
-direct relays.
+starts at `SCRAPE_MIN_TIER` and escalates when necessary. To prevent both Tier 0 and Tier 1 traffic,
+set `MITM_ALWAYS_SCRAPE=true` together with `SCRAPE_MIN_TIER=2`. WebSocket upgrades remain direct
+relays.
 
 Always-scrape mode also bypasses Tier 0's media and large-file streaming path. Do not enable it on
 a general download or media proxy: video, archives, Range requests, and other large responses may
@@ -62,6 +67,7 @@ services:
       MITM_PORT: 8192
       MITM_CA_DIR: /data/proxy-ca
       MITM_ALWAYS_SCRAPE: "false"
+      SCRAPE_MIN_TIER: "1"
     volumes:
       - trawl_proxy_ca:/data/proxy-ca
 

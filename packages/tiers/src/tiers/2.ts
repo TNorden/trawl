@@ -9,6 +9,7 @@ import type {
 } from "@trawl/types"
 import { capturePageScreenshot } from "../screenshot"
 import { solvePageCaptchas } from "../solvers"
+import { reportBlocked } from "../utils/blockedEvidence"
 import { attachPageCapture, type CaptureOptions } from "../utils/capture"
 import { normalizeSameSite, toCookies } from "../utils/cookies"
 import {
@@ -21,7 +22,7 @@ import {
 import { normalizeHtml } from "../utils/html"
 import { trackMainDocumentResponses } from "../utils/mainResponse"
 import { installOutboundPolicy, type OutboundUrlValidator } from "../utils/outboundPolicy"
-import { captureResponse, isTextContentType } from "../utils/response"
+import { captureResponse, isHtmlContentType, isTextContentType } from "../utils/response"
 import type { RouteLike } from "../utils/sanitize"
 import { routeContinueOverrides } from "../utils/sanitize"
 
@@ -41,6 +42,7 @@ export interface Tier2Result extends TierResult {
   networkLogs?: NetworkLogEntry[]
   redirectChain?: string[]
   capturedResponses?: CapturedResponseEntry[]
+  mhtml?: string
 }
 
 export async function runTier2(
@@ -105,18 +107,54 @@ export async function runTier2(
     }
 
     if (isCloudflarePage(html, mainResponse.headers)) {
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 2,
+          status: "blocked",
+          reason: "session-expired",
+          statusCode: mainResponse.status,
+          html,
+        },
+        maxTimeout - (Date.now() - start),
+      )
       return { tier: 2, status: "blocked", durationMs: Date.now() - start, reason: "session-expired" }
     }
 
     // A cached session that lands back on Akamai's interstitial is stale — force a
     // fresh Tier-3 solve rather than returning the ~2KB challenge stub as content.
     if (hasAkamaiChallenge(html)) {
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 2,
+          status: "blocked",
+          reason: "akamai-session-expired",
+          statusCode: mainResponse.status,
+          html,
+        },
+        maxTimeout - (Date.now() - start),
+      )
       return { tier: 2, status: "blocked", durationMs: Date.now() - start, reason: "akamai-session-expired" }
     }
 
     // Same reasoning for DataDome: isBlocked() already catches the 403, but a stale
     // `datadome` cookie is worth telling apart from any other 403 in the logs.
     if (hasDataDomeChallenge(html)) {
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 2,
+          status: "blocked",
+          reason: "datadome-session-expired",
+          statusCode: mainResponse.status,
+          html,
+        },
+        maxTimeout - (Date.now() - start),
+      )
       return {
         tier: 2,
         status: "blocked",
@@ -127,7 +165,20 @@ export async function runTier2(
     }
 
     if (isBlocked(mainResponse.status, html)) {
-      return { tier: 2, status: "blocked", durationMs: Date.now() - start, reason: `http-${mainResponse.status}` }
+      const reason = `http-${mainResponse.status}`
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 2,
+          status: "blocked",
+          reason,
+          statusCode: mainResponse.status,
+          html,
+        },
+        maxTimeout - (Date.now() - start),
+      )
+      return { tier: 2, status: "blocked", durationMs: Date.now() - start, reason }
     }
 
     // Attempt to solve any embedded captcha widgets (Turnstile, reCAPTCHA, hCaptcha).
@@ -150,6 +201,19 @@ export async function runTier2(
 
     const finalHtml = await page.content()
     if (isCloudflarePage(finalHtml, mainResponse.headers)) {
+      await reportBlocked(
+        page,
+        capture.blockedEvidence,
+        {
+          tier: 2,
+          status: "blocked",
+          reason: "session-expired",
+          statusCode: mainResponse.status,
+          html: finalHtml,
+          screenshot: shot,
+        },
+        maxTimeout - (Date.now() - start),
+      )
       return { tier: 2, status: "blocked", durationMs: Date.now() - start, reason: "session-expired" }
     }
 
@@ -172,6 +236,7 @@ export async function runTier2(
       screenshot: shot,
       ...evidence,
       redirectChain: capture.redirectChain ? mainResponse.redirectChain : undefined,
+      mhtml: isHtmlContentType(captured.contentType) ? pageCapture.archive(page.url(), finalHtml) : undefined,
     }
   } catch (err) {
     return {

@@ -6,15 +6,23 @@
 //   reCAPTCHA v2          — checkbox auto-pass + audio challenge via Google's free STT
 //   hCaptcha              — checkbox click (auto-pass path only; image grids need AI)
 //   GeeTest slide         — human-like mouse drag with canvas gap detection
+//   Altcha PoW           — client-side SHA-256 Proof-of-Work computation
+//   Friendly Captcha PoW  — client-side Proof-of-Work puzzle solving
 //
 // Called after the page is loaded (post-CF-interstitial).
 // Interstitial-level CF challenges are handled separately in challengeWait.ts.
 
 import type { Page } from "patchright"
+import { hasAltcha as hasAltchaMarkup, hasFriendlyCaptcha as hasFriendlyCaptchaMarkup } from "../utils/detect"
+import { hasAltchaWidget, solveAltcha } from "./altcha"
+import { hasFriendlyCaptchaWidget, solveFriendlyCaptcha } from "./friendlyCaptcha"
 import { hasGeetestSlide, solveGeetestSlide } from "./geetest"
 import { hasHcaptchaWidget, solveHcaptcha } from "./hcaptcha"
 import { hasRecaptchaV2, solveRecaptchaV2 } from "./recaptcha"
 import { solveTurnstile } from "./turnstile"
+
+export { hasAltchaWidget, solveAltcha } from "./altcha"
+export { hasFriendlyCaptchaWidget, solveFriendlyCaptcha } from "./friendlyCaptcha"
 
 export interface SolveResult {
   attempted: string[]
@@ -79,6 +87,7 @@ async function detectTurnstile(page: Page, timeoutMs: number): Promise<boolean> 
 }
 
 export async function solvePageCaptchas(page: Page, timeoutMs = 30_000): Promise<SolveResult> {
+  const deadline = Date.now() + Math.max(0, timeoutMs)
   const attempted: string[] = []
   const solved: string[] = []
 
@@ -88,8 +97,17 @@ export async function solvePageCaptchas(page: Page, timeoutMs = 30_000): Promise
   const mightHaveRecaptcha = /g-recaptcha|google\.com\/recaptcha|recaptcha\.net|grecaptcha/i.test(html)
   const mightHaveHcaptcha = /h-captcha|hcaptcha\.com/i.test(html)
   const mightHaveGeetest = /geetest|gt_container|initGeetest/i.test(html)
+  const mightHaveAltcha = hasAltchaMarkup(html)
+  const mightHaveFriendlyCaptcha = hasFriendlyCaptchaMarkup(html)
 
-  if (!mightHaveTurnstile && !mightHaveRecaptcha && !mightHaveHcaptcha && !mightHaveGeetest) {
+  if (
+    !mightHaveTurnstile &&
+    !mightHaveRecaptcha &&
+    !mightHaveHcaptcha &&
+    !mightHaveGeetest &&
+    !mightHaveAltcha &&
+    !mightHaveFriendlyCaptcha
+  ) {
     return { attempted: [], solved: [] }
   }
 
@@ -110,17 +128,21 @@ export async function solvePageCaptchas(page: Page, timeoutMs = 30_000): Promise
 
   // waitForSelector already handles waiting for widgets — no blind sleep needed.
   // 3s: Turnstile/reCAPTCHA iframes typically appear within 2s of page load;
-  // GeeTest/hCaptcha detect via HTML markers (instant). If nothing in 3s, skip.
-  const DETECT_MS = 3_000
+  // GeeTest/hCaptcha/Altcha/FriendlyCaptcha detect via HTML markers (instant). If nothing in 3s, skip.
+  const DETECT_MS = Math.min(3_000, Math.max(0, deadline - Date.now()))
 
-  const [hasTurnstile, hasHcaptcha, hasRecaptcha, hasGeetest] = await Promise.all([
+  const [hasTurnstile, hasHcaptcha, hasRecaptcha, hasGeetest, hasAltcha, hasFriendlyCaptcha] = await Promise.all([
     mightHaveTurnstile ? detectTurnstile(page, DETECT_MS) : Promise.resolve(false),
     mightHaveHcaptcha ? hasHcaptchaWidget(page, DETECT_MS) : Promise.resolve(false),
     mightHaveRecaptcha ? hasRecaptchaV2(page, DETECT_MS) : Promise.resolve(false),
     mightHaveGeetest ? hasGeetestSlide(page, DETECT_MS) : Promise.resolve(false),
+    mightHaveAltcha ? hasAltchaWidget(page, DETECT_MS) : Promise.resolve(false),
+    mightHaveFriendlyCaptcha ? hasFriendlyCaptchaWidget(page, DETECT_MS) : Promise.resolve(false),
   ])
 
-  const count = [hasTurnstile, hasHcaptcha, hasRecaptcha, hasGeetest].filter(Boolean).length
+  const count = [hasTurnstile, hasHcaptcha, hasRecaptcha, hasGeetest, hasAltcha, hasFriendlyCaptcha].filter(
+    Boolean,
+  ).length
   if (count === 0) {
     console.log(
       `[solvers] markers found in HTML but no interactive widgets detected (${[
@@ -128,6 +150,8 @@ export async function solvePageCaptchas(page: Page, timeoutMs = 30_000): Promise
         mightHaveRecaptcha && "recaptcha",
         mightHaveHcaptcha && "hcaptcha",
         mightHaveGeetest && "geetest",
+        mightHaveAltcha && "altcha",
+        mightHaveFriendlyCaptcha && "friendly-captcha",
       ]
         .filter(Boolean)
         .join(",")})`,
@@ -135,7 +159,7 @@ export async function solvePageCaptchas(page: Page, timeoutMs = 30_000): Promise
     return { attempted: [], solved: [] }
   }
 
-  const perMs = Math.floor(timeoutMs / count)
+  const perMs = Math.floor(Math.max(0, deadline - Date.now()) / count)
 
   if (hasTurnstile) {
     attempted.push("turnstile")
@@ -155,6 +179,16 @@ export async function solvePageCaptchas(page: Page, timeoutMs = 30_000): Promise
   if (hasGeetest) {
     attempted.push("geetest-slide")
     if (await solveGeetestSlide(page, perMs).catch(() => false)) solved.push("geetest-slide")
+  }
+
+  if (hasAltcha) {
+    attempted.push("altcha")
+    if (await solveAltcha(page, perMs).catch(() => false)) solved.push("altcha")
+  }
+
+  if (hasFriendlyCaptcha) {
+    attempted.push("friendly-captcha")
+    if (await solveFriendlyCaptcha(page, perMs).catch(() => false)) solved.push("friendly-captcha")
   }
 
   if (attempted.length > 0) {

@@ -1,6 +1,14 @@
-import { ProxyPool } from "@trawl/tiers"
+import { ProxyPool, type ProxySelection } from "@trawl/tiers"
 
 export const REDIS_URL = process.env.REDIS_URL?.trim() || undefined
+export type SessionCacheDriver = "redis" | "memory"
+const configuredSessionCacheDriver = process.env.SESSION_CACHE_DRIVER?.trim().toLowerCase() || "redis"
+if (configuredSessionCacheDriver !== "redis" && configuredSessionCacheDriver !== "memory") {
+  throw new Error(
+    `Invalid SESSION_CACHE_DRIVER ${JSON.stringify(process.env.SESSION_CACHE_DRIVER)}; expected "redis" or "memory"`,
+  )
+}
+export const SESSION_CACHE_DRIVER: SessionCacheDriver = configuredSessionCacheDriver
 const integerInRange = (value: string | undefined, fallback: number, min: number, max = Number.MAX_SAFE_INTEGER) => {
   if (value === undefined || value.trim() === "") return fallback
   const parsed = Number(value)
@@ -8,6 +16,22 @@ const integerInRange = (value: string | undefined, fallback: number, min: number
 }
 const positiveInteger = (value: string | undefined, fallback: number): number => integerInRange(value, fallback, 1)
 const nonNegativeInteger = (value: string | undefined, fallback: number): number => integerInRange(value, fallback, 0)
+const isTier = (tier: number): tier is 1 | 2 | 3 | 4 => tier === 1 || tier === 2 || tier === 3 || tier === 4
+
+export const parseScrapeMinTier = (value: string | undefined): 1 | 2 | 3 | 4 => {
+  if (value === undefined || value.trim() === "") return 1
+  const parsed = Number(value)
+  if (isTier(parsed)) return parsed
+  throw new Error(`Invalid SCRAPE_MIN_TIER ${JSON.stringify(value)}; expected 1, 2, 3, or 4`)
+}
+
+export const parseProxySelection = (value: string | undefined): ProxySelection => {
+  const normalized = value?.trim().toLowerCase() || "failover"
+  if (normalized === "failover" || normalized === "roundrobin" || normalized === "random") return normalized
+  throw new Error(
+    `Invalid SCRAPE_PROXY_SELECTION ${JSON.stringify(value)}; expected "failover", "roundrobin", or "random"`,
+  )
+}
 
 export const PORT = integerInRange(process.env.PORT, 8_191, 1, 65_535)
 export const POOL_SIZE = positiveInteger(process.env.BROWSER_POOL_SIZE, 3)
@@ -16,6 +40,7 @@ export const POOL_SIZE = positiveInteger(process.env.BROWSER_POOL_SIZE, 3)
 // Tune lower for fast-fail feedback in dev; tune higher for very heavy upstream targets.
 export const ACQUIRE_TIMEOUT_MS = positiveInteger(process.env.BROWSER_ACQUIRE_TIMEOUT_MS, 15_000)
 export const REDIS_SESSION_TTL_SECONDS = positiveInteger(process.env.REDIS_SESSION_TTL_SECONDS, 3_600)
+export const MEMORY_SESSION_CACHE_MAX_ENTRIES = positiveInteger(process.env.MEMORY_SESSION_CACHE_MAX_ENTRIES, 1_000)
 // A failed initial Redis connection must not disable Tier 2 for the process lifetime.
 // Each attempt is bounded; failed attempts are retried in the background while the API stays ready.
 export const REDIS_CONNECT_TIMEOUT_MS = positiveInteger(process.env.REDIS_CONNECT_TIMEOUT_MS, 5_000)
@@ -33,6 +58,10 @@ export const BROWSER_MAX_CONTENT_PROCESSES = positiveInteger(process.env.BROWSER
 // plus its X display measures ~380 MB, which would silently move the memory ceiling of a
 // deployment that never meets DataDome. Set it to 1 to scrape DataDome targets.
 export const HEADFUL_POOL_SIZE = nonNegativeInteger(process.env.BROWSER_HEADFUL_POOL_SIZE, 0)
+// Deployment-wide lower bound for every scraper entry point. Invalid values fail
+// closed so a typo cannot unexpectedly re-enable a direct Tier 1 request.
+export const SCRAPE_MIN_TIER = parseScrapeMinTier(process.env.SCRAPE_MIN_TIER)
+export const SCRAPE_PROXY_SELECTION = parseProxySelection(process.env.SCRAPE_PROXY_SELECTION)
 
 // Optional MCP Streamable HTTP endpoint. Keep this disabled unless the API is
 // reachable only by trusted clients; v1 intentionally has no authentication.
@@ -56,10 +85,11 @@ export const LAUNCH_TIMEOUT_MS = positiveInteger(process.env.BROWSER_LAUNCH_TIME
 // PROXY_URL / RESIDENTIAL_PROXY_URL accept a comma-separated list of proxy URLs (a single
 // URL still works — it's just a 1-element list). *_LIST_FILE is an alternative source
 // (one proxy per line) for lists too large for a single env var.
-export const proxyPool = ProxyPool.fromEnv(process.env.PROXY_URL, process.env.PROXY_LIST_FILE)
+export const proxyPool = ProxyPool.fromEnv(process.env.PROXY_URL, process.env.PROXY_LIST_FILE, SCRAPE_PROXY_SELECTION)
 export const residentialProxyPool = ProxyPool.fromEnv(
   process.env.RESIDENTIAL_PROXY_URL,
   process.env.RESIDENTIAL_PROXY_LIST_FILE,
+  SCRAPE_PROXY_SELECTION,
 )
 
 // ── MITM forward-proxy mode ────────────────────────────────────────────────────
@@ -79,7 +109,6 @@ export const MITM_HOST = process.env.MITM_HOST ?? "0.0.0.0"
 export const MITM_CA_DIR = process.env.MITM_CA_DIR ?? "/data/proxy-ca"
 // Cap the tier the proxy will escalate to (e.g. keep it off residential Tier 4).
 const configuredMaxTier = Number(process.env.MITM_MAX_TIER)
-const isTier = (tier: number): tier is 1 | 2 | 3 | 4 => tier === 1 || tier === 2 || tier === 3 || tier === 4
 export const MITM_MAX_TIER = isTier(configuredMaxTier) ? configuredMaxTier : undefined
 // Skip the proxy's direct Tier 0 probe and route ordinary HTTP requests into scrape().
 // This is separate from ScrapeRequest.skipHttp, which controls scraper Tier 1.

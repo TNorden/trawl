@@ -34,11 +34,39 @@ match an entry in this list.
 MCP_ALLOWED_ORIGINS=https://chat.example.com,https://admin.example.com
 ```
 
+## Session Cache Driver
+
+### `SESSION_CACHE_DRIVER`
+
+**Default:** `redis`
+
+Selects the backend used for the Tier 2 session cache. Redis remains the default to preserve
+cross-instance session sharing and backward compatibility.
+
+```ini
+SESSION_CACHE_DRIVER=redis   # default — shared across instances, requires Redis
+SESSION_CACHE_DRIVER=memory  # in-process Map, zero external dependencies
+```
+
+Use `memory` for single-instance deployments where running Redis is not justified. Sessions are
+scoped to the API process and lost on restart — they are **not shared** across instances. See
+[Session Cache](/architecture/session-cache) for details.
+
+Unknown values stop startup with a configuration error instead of silently selecting another
+backend.
+
+### `MEMORY_SESSION_CACHE_MAX_ENTRIES`
+
+**Default:** `1000`
+
+Maximum number of sessions retained by the memory driver. Once full, it evicts the least recently
+used session. Expired sessions are removed automatically on reads and writes.
+
 ## Redis
 
 ### `REDIS_URL`
 
-**Default:** _(empty — session cache disabled)_
+**Default:** _(empty — Redis driver disabled)_
 
 Standard Redis connection URL — TRAWL's cache backend is Redis 8.8. Set a non-empty URL to enable
 the session cache. When running inside Docker Compose use the service name:
@@ -77,8 +105,8 @@ disable retries. The supplied minimal Compose variant does this automatically.
 
 **Default:** `3600` (1 hour)
 
-How long solved browser cookies and user-agent state are cached in Redis per domain. After this TTL
-the next protected request triggers a fresh challenge solve and refreshes the cache.
+How long solved browser cookies and user-agent state are cached per domain by either driver. After
+this TTL the next protected request triggers a fresh challenge solve and refreshes the cache.
 
 Cloudflare's `cf_clearance` cookie typically has a 30-minute expiry. Setting
 `REDIS_SESSION_TTL_SECONDS` below 1800 wastes cache hits; setting it above 7200 risks replaying
@@ -88,6 +116,33 @@ expired cookies. TRAWL handles an expired cookie by invalidating the cache and f
 REDIS_SESSION_TTL_SECONDS=3600   # default — safe for most sites
 REDIS_SESSION_TTL_SECONDS=1800   # more conservative
 ```
+
+## Scrape Tier Floor
+
+### `SCRAPE_MIN_TIER`
+
+**Default:** `1`
+
+Sets the lowest tier that `/scrape`, FlareSolverr `/v1`, MCP tools, and MITM scraper fallbacks may
+use. Tier `1` preserves the normal plain HTTP fast path, `2` starts with a cached browser session,
+`3` starts with a fresh browser solve, and `4` goes directly to a residential or explicitly supplied
+proxy. Tier 2 is skipped naturally when no cached session exists.
+
+```ini
+SCRAPE_MIN_TIER=1   # normal adaptive ladder
+SCRAPE_MIN_TIER=2   # never make the plain HTTP request
+SCRAPE_MIN_TIER=3   # never reuse a cached browser session
+SCRAPE_MIN_TIER=4   # require residential or per-request proxy routing
+```
+
+Use a floor above `1` when an early request itself affects the target's fingerprint or when every
+request must reach a particular proxy-backed tier. Higher floors increase latency and browser-pool
+load. An invalid value stops TRAWL at startup, and a request whose `maxTier` is below the configured
+floor fails before any outbound request. The native API's `skipHttp: true` can raise the effective
+floor to Tier 2 but cannot lower this deployment-wide setting.
+
+For the MITM forward proxy, this setting applies only after the request enters the scraper ladder.
+Set `MITM_ALWAYS_SCRAPE=true` as well when the proxy's direct Tier 0 probe must also be disabled.
 
 ## Browser Pool
 
@@ -258,6 +313,51 @@ bodies with a valid `Content-Length` are read. Compressed or unknown-size bodies
 returned with `body: null` and an error. Declared sizes are reserved cumulatively before
 reads start, so concurrent responses cannot exceed the total read budget.
 
+## Blocked-Outcome Evidence
+
+Only retained when a request sets `blockedEvidence: true` — see
+[Native API](/api-reference/native-api#blocked-outcome-evidence). Without it the failure
+path captures no additional image or response data. Only the last wall is kept per request,
+and its markup, screenshot size and screenshot time are all bounded.
+
+| Variable | Default | Purpose |
+| --- | ---: | --- |
+| `BLOCKED_EVIDENCE_MAX_HTML_CHARS` | `512000` | Characters of the wall kept; past it `html` is the head of the page and `htmlTruncated` is set |
+
+The wall is truncated rather than dropped: unlike a stylesheet or an image, the head of a
+challenge page still carries the title, vendor markers and incident id a caller classifies
+on. Capturing it never fails the scrape, and screenshots cannot extend the request budget.
+Challenge markup and screenshots can contain tokens, credentials or personal data; avoid
+logging, persisting or publicly exposing them unless that is explicitly intended.
+
+## MHTML Archives
+
+Only read when a request sets `mhtml: true` — see
+[Native API](/api-reference/native-api#mhtml-archives). Without it no subresource body is
+read. The archive keeps many small parts rather than a few large bodies, so it carries
+budgets of its own rather than sharing the response-body ones.
+
+| Variable | Default | Purpose |
+| --- | ---: | --- |
+| `MHTML_MAX_PARTS` | `200` | Subresources archived per page |
+| `MHTML_MAX_PART_BYTES` | `2097152` | Bytes per subresource; a larger one is omitted whole |
+| `MHTML_MAX_TOTAL_CHARS` | `8388608` | Maximum characters in the complete serialized archive, including the rendered root and MIME overhead |
+| `MHTML_MAX_INFLIGHT_READS` | `32` | Subresource bodies read at the same time; a burst past this is omitted rather than held |
+| `MHTML_MAX_OMISSION_RECORDS` | `100` | Omissions listed by URL in the archive; the rest are only counted |
+
+Bodies are read as they arrive, so a page whose subresources all complete at once is
+bounded by `MHTML_MAX_INFLIGHT_READS` and by the archive budget reserved from each valid
+`Content-Length`. Because the browser API returns only complete bodies, compressed and
+unknown-size responses are omitted before reading rather than trusted after allocation.
+When `captureResponses` selects the same resource, both outputs share one browser body read.
+
+A subresource is omitted rather than trimmed — a truncated stylesheet or image is corrupt,
+not partial. Every omission is counted in the archive's `X-Trawl-Omitted-Resources` header;
+up to `MHTML_MAX_OMISSION_RECORDS` are listed in its final part. Non-HTML responses, a root
+that cannot fit the total cap, or an assembly failure leave `mhtml` unset and never fail
+the scrape. Archives may contain credentials, personal data and executable target scripts,
+so treat them as sensitive untrusted output.
+
 ## CAPTCHA audio and media tools
 
 TRAWL uses ffmpeg while solving supported CAPTCHA challenges. reCAPTCHA audio is converted before
@@ -354,11 +454,28 @@ For a single endpoint or a short pool, a local `.env` beside `docker-compose.yml
 RESIDENTIAL_PROXY_URL=http://user:pass@residential.example.com:8080
 ```
 
-The supplied Compose files pass all four proxy variables into the container.
+The supplied Compose files pass the proxy pool sources and selection policy into the container.
 
 ### Rotation and failure handling
 
-When more than one proxy is configured, TRAWL picks proxies **sticky-per-domain** — repeat requests to the same hostname keep reusing the same proxy (helps avoid re-triggering challenges), while different domains spread round-robin across the pool. If a tier attempt comes back `"blocked"` using a pool-sourced proxy, that proxy is put in a 5-minute cooldown and the request retries once with the next available proxy before falling through (Tier 3 → Tier 4, or Tier 4 failing outright) — bounded to 2 attempts per tier so a long list can't blow the request's `maxTimeout`.
+`SCRAPE_PROXY_SELECTION` controls how both datacenter and residential pools choose an endpoint:
+
+| Value | Behavior |
+| --- | --- |
+| `failover` (default) | Keeps a proxy sticky per domain. New domains spread round-robin, and a domain moves only after its proxy is blocked. This best preserves IP continuity for challenge-heavy targets. |
+| `roundrobin` | Chooses the next healthy endpoint whenever a request enters Tier 3 or Tier 4, including repeat requests to the same hostname. |
+| `random` | Randomly chooses a healthy endpoint whenever a request enters Tier 3 or Tier 4. |
+
+Selection happens only when a request actually reaches a proxy-backed tier. A request completed by
+Tier 1 or cached Tier 2 does not advance the pool; use `SCRAPE_MIN_TIER=3` when every scrape must
+enter proxy selection. The setting rotates configured endpoints, not the exit IP behind a single
+provider-managed rotating gateway. Rotation state is local to each TRAWL process and is not
+coordinated across replicas.
+
+The selected proxy stays fixed for the whole tier attempt, including a headful retry. If an attempt
+comes back `"blocked"`, the endpoint enters a 5-minute cooldown and that request retries once with
+the next available proxy before falling through (Tier 3 → Tier 4, or Tier 4 failing outright). The
+two-attempt limit prevents a large list from exhausting the request's `maxTimeout`.
 
 ### Per-request override
 

@@ -425,9 +425,9 @@ async function serveViaScrape(
       }
     }
 
-    // Browser tiers expose both the original navigation response and the
-    // rendered DOM. For HTML, the latter is the solved page behind the challenge.
-    // Binary responses retain their exact raw bytes.
+    // Browser tiers expose decoded navigation bodies and, for HTML, the rendered
+    // solved DOM. responseFromScrapeResult removes upstream representation
+    // headers that no longer describe those bytes; Tier 1 remains byte-faithful.
     const response = responseFromScrapeResult(scrapeResult)
     if (opts.debug) {
       console.log(

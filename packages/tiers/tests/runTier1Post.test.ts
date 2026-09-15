@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { scrape } from "../src/orchestrator"
 import { runTier1 } from "../src/tiers/1"
 
 interface RecordedCall {
@@ -37,6 +38,29 @@ afterEach(() => {
 })
 
 describe("runTier1 — POST support", () => {
+  test("reports the same fingerprint UA that the orchestrator sends", async () => {
+    const restore = installFetchMock()
+    try {
+      const result = await scrape(
+        { url: "https://example.com/x", maxTier: 1 },
+        {
+          acquireBrowser: async () => {
+            throw new Error("Tier 1 success must not acquire a browser")
+          },
+          releaseBrowser: () => {},
+          loadSession: async () => undefined,
+          saveSession: async () => {},
+          invalidateSession: async () => {},
+        },
+      )
+
+      const headers = recorded[0].init?.headers as Record<string, string>
+      expect(result.userAgent).toBe(headers["User-Agent"] ?? headers["user-agent"])
+    } finally {
+      restore()
+    }
+  })
+
   test("passes an explicit HTTP proxy to Bun fetch", async () => {
     const restore = installFetchMock()
     try {

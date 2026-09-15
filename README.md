@@ -8,7 +8,7 @@
 ## **Welcome** to <a href="https://trawl.germondai.com" target="_blank">**TRAWL**</a>! 👋
 
 Self-hosted web scraping engine with best-effort JS challenge and CAPTCHA solving.\
-Dedicated flows for Cloudflare, Akamai Bot Manager, and Imperva/Incapsula (best effort), plus Turnstile, reCAPTCHA, hCaptcha, and GeeTest.\
+Dedicated flows for Cloudflare, Akamai Bot Manager, and Imperva/Incapsula (best effort), plus Turnstile, reCAPTCHA, hCaptcha, GeeTest, ALTCHA, and Friendly Captcha.\
 Much faster and more reliable FlareSolverr & Byparr alternative and drop-in replacement for your \*arr stack.
 
 ## Features
@@ -17,7 +17,7 @@ Much faster and more reliable FlareSolverr & Byparr alternative and drop-in repl
 - **4-tier execution** - plain HTTP fetch → cached browser session → fresh challenge solve → residential proxy
 - **Challenge-aware HTTP/HTTPS proxy** - direct forwarding for normal traffic, automatic tier escalation for detected walls, plus WebSockets, binary bodies, and Range/206 support
 - **Multi-WAF handling** - dedicated Cloudflare, Akamai Bot Manager, and Imperva/Incapsula detection and browser flows
-- **Native captcha solving** - CF Turnstile/Interstitial, reCAPTCHA v2 (free STT), hCaptcha, GeeTest v4 Slide
+- **Native captcha solving** - CF Turnstile/Interstitial, reCAPTCHA v2 (free STT), hCaptcha, GeeTest v4 Slide, ALTCHA, and Friendly Captcha v1/v2
 - **Camoufox Firefox** - fingerprint-patched at the C++/Juggler level to reduce automation signals
 - **Session cache** - solved cookies and browser identity stored in Redis; accepted sessions can avoid a fresh solve
 - **FlareSolverr compatible** - works with Prowlarr, Jackett, Sonarr, and the full \*arr ecosystem out of the box
@@ -48,21 +48,38 @@ Much faster and more reliable FlareSolverr & Byparr alternative and drop-in repl
     </tr>
     <tr>
       <td width="30%" align="center" valign="middle">
-        <a href="https://go.nodemaven.com/germondaireadme" target="_blank">
-          <img width="760" height="280" alt="nodemaven" src="https://github.com/user-attachments/assets/5fe3b231-b712-42d1-bc70-23c934f1a0ef" />
+        <a href="https://go.nodemaven.com/MediaCrawlerSeptember" target="_blank">
+          <img width="1047" height="262" alt="NodeMaven" src="https://github.com/user-attachments/assets/1e4e89c6-a574-462a-86bc-13c273117657" />
         </a>
       </td>
       <td valign="middle">
-        <b><a href="https://go.nodemaven.com/germondaireadme" target="_blank">NodeMaven</a></b> - The most efficient proxy provider for Web Scrapping and Automation with the Highest Quality IP on the market.<br><br>
-        <b>Why <a href="https://go.nodemaven.com/germondaireadme" target="_blank">NodeMaven</a>?</b><br>
+        <b><a href="https://go.nodemaven.com/MediaCrawlerSeptember" target="_blank">NodeMaven</a></b> - The most efficient proxy provider for Web Scrapping and Automation with the Highest Quality IP on the market.<br><br>
+        <b>Why <a href="https://go.nodemaven.com/MediaCrawlerSeptember" target="_blank">NodeMaven</a>?</b><br>
         • ZIP targeting<br>
         • 99.9% uptime<br>
         • IP filtering: all proxies have fraud score <97%<br>
         • No KYC required<br>
         • Unique free tools: Proxy Bandwidth Checker, Meta Tag Checker, IP Lookup and others!<br><br>
         <b>Special codes for <a href="https://trawl.germondai.com" target="_blank">TRAWL</a> users:</b><br>
-        • TRAWL35 - 35% off to Mobile and Residential Proxies<br>
-        • TRAWL40 - 40% off to ISP (Static) Proxies
+        • <code>TRAWL35</code> - 35% off to Mobile and Residential Proxies<br>
+        • <code>TRAWL40</code> - 40% off to ISP (Static) Proxies
+      </td>
+    </tr>
+    <tr>
+      <td width="30%" align="center" valign="middle">
+        <a href="https://www.thordata.com/?ls=dtw&lk=dtw" target="_blank">
+          <img width="1254" height="1254" alt="Thordata" src="https://github.com/user-attachments/assets/32a5d8db-24c9-4779-b309-bdfdb32589f6" />
+        </a>
+      </td>
+      <td valign="middle">
+        <b><a href="https://www.thordata.com/?ls=dtw&lk=dtw" target="_blank">Thordata</a></b> - Premium Residential Proxies for Data Collection.<br><br>
+        <a href="https://www.thordata.com/?ls=dtw&lk=dtw" target="_blank">Thordata</a> helps developers build reliable scraping, automation, and AI data workflows with high-quality residential IPs.<br><br>
+        🌍 100M+ real IPs | 195+ countries<br>
+        🔄 Rotating & sticky sessions | Precise geo-targeting<br>
+        ⚡ High concurrency | Stable connections<br><br>
+        Reduce blocks and collect data at scale with confidence.<br><br>
+        <b>🎁 <a href="https://trawl.germondai.com" target="_blank">TRAWL</a> users:</b><br>
+        • 3-day free trial + 10% OFF Code: <code>TRAWL10</code>
       </td>
     </tr>
   </table>
@@ -330,24 +347,28 @@ Tier 4: Residential proxy ──── success ──→ cache + return (15–45
 | `docker-compose.minimal.yml` | Scraper only, no Redis                                   |
 | `docker-compose.prod.yml`    | Production: `restart: always`, memory limit, healthcheck |
 
-## Docker images (one GHCR package, two tags)
+## Docker images (one GHCR package, three tags)
 
-| Image tag                          | Built from                     | Runtime                       | Use case                                                   |
-| ---------------------------------- | ------------------------------ | ----------------------------- | ---------------------------------------------------------- |
-| `ghcr.io/germondai/trawl:latest`   | `apps/api/Dockerfile`          | Bun 1.4.0 (modern, AVX2)     | Default — modern Linux amd64/arm64                         |
-| `ghcr.io/germondai/trawl:baseline` | `apps/api/Dockerfile.baseline` | Bun 1.4.0 baseline (no AVX2) | Older CPUs / older kernels (Synology NAS, J4125, Atom-era) |
+| Image tag                              | Built from                     | Runtime                       | Use case                                                   |
+| -------------------------------------- | ------------------------------ | ----------------------------- | ---------------------------------------------------------- |
+| `ghcr.io/germondai/trawl:latest`       | `apps/api/Dockerfile`          | Bun 1.4.2 (modern, AVX2)     | Compact default — Linux fingerprints                       |
+| `ghcr.io/germondai/trawl:latest-fonts` | `apps/api/Dockerfile`          | Bun 1.4.2 (modern, AVX2)     | Full Windows/macOS/Linux font and fingerprint pool (+~891 MB) |
+| `ghcr.io/germondai/trawl:baseline`     | `apps/api/Dockerfile.baseline` | Bun 1.4.2 baseline (no AVX2) | Older CPUs / older kernels (Synology NAS, J4125, Atom-era) |
 
-Both tags live on the same `ghcr.io/germondai/trawl` package — they share the registry but use different Dockerfile sources. Pick whichever tag fits your hardware:
+All tags live on the same `ghcr.io/germondai/trawl` package — they share the registry but differ in Dockerfile source or build arguments. Pick whichever tag fits your hardware and output:
 
 ```yaml
 # Modern hardware (most users)
 image: ghcr.io/germondai/trawl:latest
 
+# Full OS diversity and matching rendered output/font metrics
+image: ghcr.io/germondai/trawl:latest-fonts
+
 # Older CPUs without AVX2 / Synology / older kernels
 image: ghcr.io/germondai/trawl:baseline
 ```
 
-Synology note: many Synology NAS units (DSM 7.x on J4125 / older hardware) ship kernel 4.4.x, which Bun's modern runtime can't fully handle. Standard Bun requires kernel 5.1+ (5.6+ recommended); the baseline build degrades gracefully down to kernel 3.10. The `:baseline` tag is published for that case — **confirmed working** on a Synology DS920+ (Celeron J4125, DSM 7.3.2, kernel 4.4.302): the container starts cleanly, `/health` reports healthy, and it solves live Cloudflare challenges via `/v1` (see [#1](https://github.com/germondai/trawl/issues/1)). Published by independent GitHub Actions workflows: pushing `v1.5.0` creates `:1.5.0`, `:latest`, `:1.5.0-baseline`, and `:baseline`; pushing `main` creates `:nightly` and `:nightly-<sha>`.
+Synology note: many Synology NAS units (DSM 7.x on J4125 / older hardware) ship kernel 4.4.x, which Bun's modern runtime can't fully handle. Standard Bun requires kernel 5.1+ (5.6+ recommended); the baseline build degrades gracefully down to kernel 3.10. The `:baseline` tag is published for that case — **confirmed working** on a Synology DS920+ (Celeron J4125, DSM 7.3.2, kernel 4.4.302): the container starts cleanly, `/health` reports healthy, and it solves live Cloudflare challenges via `/v1` (see [#1](https://github.com/germondai/trawl/issues/1)). Published by independent GitHub Actions workflows: pushing `v1.6.0` creates `:1.6.0`, `:latest`, `:1.6.0-fonts`, `:latest-fonts`, `:1.6.0-baseline`, and `:baseline`; pushing `main` creates `:nightly` and `:nightly-<sha>`.
 
 ## Releases & versioning
 
@@ -395,10 +416,14 @@ for pool and mounted-file examples.
 | `BROWSER_ACQUIRE_TIMEOUT_MS`     | `15000`                  | How long `acquire()` polls for a free browser before HTTP 429 is returned           |
 | `BROWSER_RECYCLE_AFTER_CONTEXTS` | `8`                      | Rolling-replace after this many Tier 3/4 contexts; set `0` to disable               |
 | `BROWSER_MAX_CONTENT_PROCESSES`  | `2`                      | Cap Firefox content processes per browser (`dom.ipc.processCount`); lowers RAM/CPU  |
-| `REDIS_SESSION_TTL_SECONDS`      | `3600`                   | Redis session cache TTL (seconds)                                                   |
-| `REDIS_URL`                      | —                        | Redis connection string; empty or unset disables the session cache                   |
+| `SCRAPE_MIN_TIER`                | `1`                      | Lowest tier allowed globally (`1` HTTP, `2` cached browser, `3` fresh, `4` residential) |
+| `SESSION_CACHE_DRIVER`           | `redis`                  | Session cache backend: `redis` or single-process `memory`                           |
+| `REDIS_SESSION_TTL_SECONDS`      | `3600`                   | Redis or in-memory session TTL (seconds)                                            |
+| `MEMORY_SESSION_CACHE_MAX_ENTRIES` | `1000`                 | Maximum LRU-bounded entries for the memory driver                                   |
+| `REDIS_URL`                      | —                        | Redis connection string; empty or unset disables the Redis cache                     |
 | `REDIS_CONNECT_TIMEOUT_MS`       | `5000`                   | Maximum time for each Redis connection attempt                                      |
 | `REDIS_RETRY_DELAY_MS`           | `5000`                   | Delay before reconnecting after startup failure; `0` disables retry                 |
+| `SCRAPE_PROXY_SELECTION`         | `failover`               | Pool policy: sticky `failover`, per-request `roundrobin`, or `random`                |
 | `PROXY_URL`                      | —                        | Optional Tier 3 HTTP or SOCKS5 proxy, or comma-separated pool                       |
 | `PROXY_LIST_FILE`                | —                        | File containing one Tier 3 proxy URL per line                                       |
 | `RESIDENTIAL_PROXY_URL`          | —                        | Enables Tier 4 proxy escalation                                                     |

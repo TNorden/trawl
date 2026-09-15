@@ -44,15 +44,16 @@ binary; there is no replacement variable.
 
 ## Redis opt-in behavior
 
-`REDIS_URL` is now the cache switch as well as the connection address:
+With the default `SESSION_CACHE_DRIVER=redis`, `REDIS_URL` is the cache switch as well as the
+connection address:
 
 ```text
 empty or unset REDIS_URL  → session cache disabled, no connection attempts
 non-empty REDIS_URL       → session cache enabled, background reconnects allowed
 ```
 
-No separate enable flag is required. The standard Compose variants configure their bundled Redis;
-the minimal variant defaults `REDIS_URL` to empty but can connect to an external Redis when given a URL.
+The standard Compose variants configure their bundled Redis. The minimal variant defaults to the
+in-memory driver; select `redis` and provide an external URL to use Redis there.
 
 ## Docker build argument
 
@@ -86,7 +87,7 @@ docker compose config
 
 `PORT` is intentionally used only for the host-side `PORT:8191` mapping; the container continues to
 listen on `8191`. The Redis-backed Compose variants route `REDIS_URL` to their bundled `redis`
-service, while the minimal variant passes an optional external URL and defaults it to empty.
+service, while the minimal variant defaults to memory and passes an optional external Redis URL.
 
 Recreate the container after changing environment variables:
 
