@@ -416,6 +416,7 @@ for pool and mounted-file examples.
 | `BROWSER_ACQUIRE_TIMEOUT_MS`     | `15000`                  | How long `acquire()` polls for a free browser before HTTP 429 is returned           |
 | `BROWSER_RECYCLE_AFTER_CONTEXTS` | `8`                      | Rolling-replace after this many Tier 3/4 contexts; set `0` to disable               |
 | `BROWSER_MAX_CONTENT_PROCESSES`  | `2`                      | Cap Firefox content processes per browser (`dom.ipc.processCount`); lowers RAM/CPU  |
+| `SCRAPE_MIN_TIER`                | `1`                      | Lowest tier allowed globally (`1` HTTP, `2` cached browser, `3` fresh, `4` residential) |
 | `SESSION_CACHE_DRIVER`           | `redis`                  | Session cache backend: `redis` or single-process `memory`                           |
 | `REDIS_SESSION_TTL_SECONDS`      | `3600`                   | Redis or in-memory session TTL (seconds)                                            |
 | `MEMORY_SESSION_CACHE_MAX_ENTRIES` | `1000`                 | Maximum LRU-bounded entries for the memory driver                                   |

@@ -117,6 +117,33 @@ REDIS_SESSION_TTL_SECONDS=3600   # default — safe for most sites
 REDIS_SESSION_TTL_SECONDS=1800   # more conservative
 ```
 
+## Scrape Tier Floor
+
+### `SCRAPE_MIN_TIER`
+
+**Default:** `1`
+
+Sets the lowest tier that `/scrape`, FlareSolverr `/v1`, MCP tools, and MITM scraper fallbacks may
+use. Tier `1` preserves the normal plain HTTP fast path, `2` starts with a cached browser session,
+`3` starts with a fresh browser solve, and `4` goes directly to a residential or explicitly supplied
+proxy. Tier 2 is skipped naturally when no cached session exists.
+
+```ini
+SCRAPE_MIN_TIER=1   # normal adaptive ladder
+SCRAPE_MIN_TIER=2   # never make the plain HTTP request
+SCRAPE_MIN_TIER=3   # never reuse a cached browser session
+SCRAPE_MIN_TIER=4   # require residential or per-request proxy routing
+```
+
+Use a floor above `1` when an early request itself affects the target's fingerprint or when every
+request must reach a particular proxy-backed tier. Higher floors increase latency and browser-pool
+load. An invalid value stops TRAWL at startup, and a request whose `maxTier` is below the configured
+floor fails before any outbound request. The native API's `skipHttp: true` can raise the effective
+floor to Tier 2 but cannot lower this deployment-wide setting.
+
+For the MITM forward proxy, this setting applies only after the request enters the scraper ladder.
+Set `MITM_ALWAYS_SCRAPE=true` as well when the proxy's direct Tier 0 probe must also be disabled.
+
 ## Browser Pool
 
 ### `BROWSER_POOL_SIZE`
