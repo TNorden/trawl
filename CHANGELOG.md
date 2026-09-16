@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-09-17
+
+### Changed
+- Bump all application and internal package versions to `1.6.2`.
+- Refresh Biome, nginx, and uBlock Origin to their latest mutually compatible releases.
+
 ### Fixed
 - Return terminal challenge HTML and its upstream status through the MITM proxy, allowing downstream clients to distinguish blocked targets from gateway failures while retaining `502 Bad Gateway` for infrastructure errors (#147).
 

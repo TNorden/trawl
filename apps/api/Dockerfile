@@ -43,9 +43,9 @@ RUN bun install --frozen-lockfile --production --omit=dev --linker=hoisted \
 FROM oven/bun:1.4.2 AS camoufox
 ENV CAMOUFOX_INSTALL_DIR=/opt/camoufox
 
-ARG UBO_VERSION=1.74.0
-ARG UBO_AMO_FILE_ID=4981431
-ARG UBO_SHA256=175756d74468c9ba45863f7fc333d3be670f82d5b066314e915814dd547d1652
+ARG UBO_VERSION=1.75.0
+ARG UBO_AMO_FILE_ID=5034826
+ARG UBO_SHA256=5b74415860456370644bd80f16125e865b0e6c356bb5dfcfb84069967eaa5287
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl unzip ca-certificates && rm -rf /var/lib/apt/lists/*
