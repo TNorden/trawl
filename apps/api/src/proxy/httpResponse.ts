@@ -1,15 +1,9 @@
+import { STATUS_CODES } from "node:http"
 import type net from "node:net"
 import { RESPONSE_HOP_BY_HOP_HEADERS } from "@trawl/tiers"
 
 function reason(status: number): string {
-  const map: Record<number, string> = {
-    200: "OK",
-    403: "Forbidden",
-    404: "Not Found",
-    500: "Internal Server Error",
-    502: "Bad Gateway",
-  }
-  return map[status] ?? "OK"
+  return STATUS_CODES[status] ?? "Unknown Status"
 }
 
 function appendHeader(headerLines: string[], name: string, value: string): void {

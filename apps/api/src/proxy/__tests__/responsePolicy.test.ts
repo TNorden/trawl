@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
-import type { ScrapeResult } from "@trawl/types"
+import type { BlockedEvidence, ScrapeResult } from "@trawl/types"
 import { serializeResponseHeaders } from "../httpResponse"
-import { responseFromScrapeResult } from "../responsePolicy"
+import { responseFromBlockedEvidence, responseFromScrapeResult } from "../responsePolicy"
 
 function result(overrides: Partial<ScrapeResult>): ScrapeResult {
   return {
@@ -111,5 +111,44 @@ describe("responseFromScrapeResult", () => {
 
     expect(head.toLowerCase()).not.toContain("content-encoding:")
     expect(head).toContain(`Content-Length: ${response.body.length}\r\n`)
+  })
+})
+
+describe("responseFromBlockedEvidence", () => {
+  const baseEvidence: BlockedEvidence = {
+    tier: 3,
+    status: "blocked",
+    url: "https://duckduckgo.com/",
+    html: '<html><body><form id="challenge-form"></form></body></html>',
+    statusCode: 202,
+    reason: "duckduckgo-persistent",
+  }
+
+  test("preserves upstream statusCode and challenge HTML", () => {
+    const response = responseFromBlockedEvidence(baseEvidence)
+    expect(response.statusCode).toBe(202)
+    expect(response.contentType).toBe("text/html; charset=utf-8")
+    expect(response.body.toString("utf8")).toBe(baseEvidence.html)
+    expect(response.headers).toEqual({
+      "content-type": "text/html; charset=utf-8",
+      "x-trawl-status": "blocked",
+      "x-trawl-reason": "duckduckgo-persistent",
+    })
+  })
+
+  test("falls back to 403 when statusCode cannot carry the challenge body", () => {
+    for (const statusCode of [undefined, 202.5, 204, 205, 304, 601]) {
+      const response = responseFromBlockedEvidence({ ...baseEvidence, statusCode })
+      expect(response.statusCode).toBe(403)
+    }
+  })
+
+  test("omits x-trawl-reason when reason is undefined", () => {
+    const response = responseFromBlockedEvidence({
+      ...baseEvidence,
+      reason: undefined,
+    })
+    expect(response.headers["x-trawl-reason"]).toBeUndefined()
+    expect(response.headers["x-trawl-status"]).toBe("blocked")
   })
 })
