@@ -290,7 +290,8 @@ async function readHttpResponse(
     }
     const previewText = decodeForInspection(body, headers["content-encoding"])
     const challengeType = detectChallengeType(previewText, headers, status)
-    const challengeDetected = !skipChallengeDetection && isChallengeWall(status, body.length, challengeType)
+    const challengeDetected =
+      !skipChallengeDetection && isChallengeWall(status, body.length, challengeType, previewText)
     return {
       mode: "buffer",
       status,
@@ -347,7 +348,7 @@ async function readHttpResponse(
   // Challenge detection on the buffered body. Bounded preview keeps this cheap.
   const previewText = decodeForInspection(body.subarray(0, offset), headers["content-encoding"])
   const challengeType = detectChallengeType(previewText, headers, status)
-  const challengeDetected = !skipChallengeDetection && isChallengeWall(status, body.length, challengeType)
+  const challengeDetected = !skipChallengeDetection && isChallengeWall(status, body.length, challengeType, previewText)
 
   return {
     mode: "buffer",
@@ -528,5 +529,5 @@ function decodeForInspection(body: Buffer, contentEncoding?: string): string {
   } catch {
     // If an upstream mislabeled or truncated the encoding, inspect the raw bytes.
   }
-  return decoded.toString("utf8", 0, Math.min(decoded.length, 4096))
+  return decoded.toString("utf8", 0, Math.min(decoded.length, 65536))
 }

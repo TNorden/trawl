@@ -39,7 +39,7 @@ export async function solveAltcha(page: Page, timeoutMs = 30_000): Promise<boole
   const deadline = Date.now() + timeoutMs
 
   try {
-    if (!(await hasAltchaWidget(page, Math.min(3000, timeoutMs)))) return false
+    if (!(await hasAltchaWidget(page, Math.min(5000, timeoutMs)))) return false
     if (await altchaVerified(page)) return true
 
     // ALTCHA v3 exposes verify() on its Web Component. Start it without awaiting
@@ -82,7 +82,24 @@ export async function solveAltcha(page: Page, timeoutMs = 30_000): Promise<boole
     }
 
     while (Date.now() < deadline) {
-      if (await altchaVerified(page)) return true
+      if (await altchaVerified(page)) {
+        const settleBudget = Math.min(6000, Math.max(0, deadline - Date.now()))
+        const settles: Promise<unknown>[] = []
+        if (settleBudget > 0 && typeof page.waitForNavigation === "function") {
+          settles.push(page.waitForNavigation({ timeout: settleBudget, waitUntil: "load" }).catch(() => {}))
+        }
+        if (settleBudget > 0 && typeof page.waitForFunction === "function") {
+          settles.push(
+            page
+              .waitForFunction(() => !document.querySelector("altcha-widget, #altcha-form, .captcha-wrap"), {
+                timeout: settleBudget,
+              })
+              .catch(() => {}),
+          )
+        }
+        if (settles.length > 0) await Promise.race(settles)
+        return true
+      }
       await sleep(Math.min(POLL_INTERVAL_MS, Math.max(0, deadline - Date.now())))
     }
   } catch (err) {

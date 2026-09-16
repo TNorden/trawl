@@ -15,6 +15,7 @@ export {
   hasAltcha,
   hasAwsWafCaptcha,
   hasAwsWafChallenge,
+  hasChallengeWallMarkers,
   hasDataDomeCaptcha,
   hasDataDomeChallenge,
   hasDdosGuardChallenge,

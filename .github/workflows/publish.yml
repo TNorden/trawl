@@ -5,21 +5,19 @@ name: Publish
 # per Docker convention (git tag `v1.0.0` -> docker tag `1.0.0`); `:latest`
 # auto-attaches via the default `latest=auto` flavor of `type=semver`.
 #
-# Every release is built twice from the same Dockerfile: the default image, and a
-# `-fonts` flavor built with `CAMOUFOX_KEEP_SPOOFED_OS_FONTS=1` so the spoofed
-# Windows/macOS font bundles stay in the image (+~891MB). Compact images detect
-# that those bundles are absent and use Linux fingerprints only; the `-fonts`
-# flavor retains the complete Windows/macOS/Linux fingerprint pool.
+# Compact release images omit the optional Windows/macOS font bundles and use
+# Linux fingerprints only. Users who need the complete fingerprint pool can
+# build it explicitly with `CAMOUFOX_KEEP_SPOOFED_OS_FONTS=1`.
 #
-# Lives separately from publish-nightly.yml (main branch pushes) and
+# Lives separately from publish-nightly.yml (dev branch pushes) and
 # publish-baseline.yml (baseline runtime pushes). `v*-baseline` is
 # intentionally excluded so a baseline-only release doesn't also push
 # `:X.Y.Z`/`:latest` — publish-baseline.yml owns that path.
 #
 # Tag contract:
-#   - push `v*` -> :X.Y.Z + :latest, and :X.Y.Z-fonts + :latest-fonts
+#   - push `v*` -> :X.Y.Z + :latest
 #   - push `v*-baseline` -> nothing here (excluded)
-#   - push `main` -> nothing here (handled by publish-nightly.yml)
+#   - branch pushes -> nothing here
 
 on:
   push:
@@ -43,8 +41,6 @@ jobs:
     needs: verify
     strategy:
       matrix:
-        platform: [linux/amd64, linux/arm64]
-        flavor: [default, fonts]
         include:
           - platform: linux/amd64
             runner: ubuntu-latest
@@ -90,10 +86,8 @@ jobs:
           push: true
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true
-          cache-from: type=gha,scope=trawl-release-${{ matrix.flavor }}-${{ matrix.platform }}
-          cache-to: type=gha,scope=trawl-release-${{ matrix.flavor }}-${{ matrix.platform }},mode=max
-          build-args: |
-            CAMOUFOX_KEEP_SPOOFED_OS_FONTS=${{ matrix.flavor == 'fonts' && '1' || '0' }}
+          cache-from: type=gha,scope=trawl-release-default-${{ matrix.platform }}
+          cache-to: type=gha,scope=trawl-release-default-${{ matrix.platform }},mode=max
           secrets: |
             GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
 
@@ -105,7 +99,7 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: digests-release-${{ matrix.flavor }}-${{ env.PLATFORM_PAIR }}
+          name: digests-release-${{ env.PLATFORM_PAIR }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -113,9 +107,6 @@ jobs:
   merge:
     runs-on: ubuntu-latest
     needs: build
-    strategy:
-      matrix:
-        flavor: [default, fonts]
     permissions:
       contents: read
       packages: write
@@ -128,7 +119,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: /tmp/digests
-          pattern: digests-release-${{ matrix.flavor }}-*
+          pattern: digests-release-*
           merge-multiple: true
 
       - uses: docker/login-action@v4
@@ -143,9 +134,6 @@ jobs:
         id: meta
         with:
           images: ${{ env.IMAGE }}
-          # The fonts build carries a `-fonts` suffix on every tag, `:latest` included
-          # (`onlatest=true`), so it never shadows the default image's tags.
-          flavor: ${{ matrix.flavor == 'fonts' && 'suffix=-fonts,onlatest=true' || '' }}
           tags: |
             # Versioned release tag: git tag v1.0.0 → docker tag 1.0.0 (strips the v prefix,
             # per Docker convention; type=ref would mirror the v through). type=semver also
