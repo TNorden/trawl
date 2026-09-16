@@ -1,9 +1,16 @@
-import type { ScrapeResult } from "@trawl/types"
+import type { BlockedEvidence, ScrapeResult } from "@trawl/types"
 
 export interface ProxyBufferedResponse {
   body: Buffer
   contentType: string
   headers: Record<string, string>
+}
+
+export interface ProxyBlockedResponse {
+  body: Buffer
+  contentType: string
+  headers: Record<string, string>
+  statusCode: number
 }
 
 const TRANSFORMED_BODY_HEADERS = new Set([
@@ -43,4 +50,20 @@ export function responseFromScrapeResult(result: ScrapeResult): ProxyBufferedRes
   headers["content-type"] = contentType
 
   return { body, contentType, headers }
+}
+
+export function responseFromBlockedEvidence(evidence: BlockedEvidence): ProxyBlockedResponse {
+  const statusCode =
+    evidence.statusCode && evidence.statusCode >= 200 && evidence.statusCode < 600 ? evidence.statusCode : 403
+
+  const headers: Record<string, string> = {
+    "content-type": "text/html; charset=utf-8",
+    "x-trawl-status": "blocked",
+  }
+  if (evidence.reason) {
+    headers["x-trawl-reason"] = evidence.reason
+  }
+
+  const body = Buffer.from(evidence.html, "utf8")
+  return { body, contentType: "text/html; charset=utf-8", headers, statusCode }
 }

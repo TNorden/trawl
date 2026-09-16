@@ -5,13 +5,14 @@ import {
   type OrchestratorDeps,
   proxySanitizeHeaders,
   RESPONSE_HOP_BY_HOP_HEADERS,
+  ScrapeError,
   scrape,
 } from "@trawl/tiers"
 import { MitmCa } from "./ca"
 import { ChallengeCache, type ChallengeMode } from "./challengeCache"
 import { directForwardHttp, directForwardHttps, type ForwardResult } from "./directForward"
 import { writeResponse, writeResponseFromBuffer, writeResponseFromStream } from "./httpResponse"
-import { responseFromScrapeResult } from "./responsePolicy"
+import { responseFromBlockedEvidence, responseFromScrapeResult } from "./responsePolicy"
 
 // General forward proxy with browser-backed challenge escalation. HTTPS is
 // MITM-terminated, so expose it only to clients that trust this instance's CA.
@@ -390,7 +391,7 @@ async function proxyRequest(
 // Tier 1+ fallback: reissue through the existing browser-backed scrape pipeline.
 // Used when Tier 0 detects a challenge, encounters a network error, or sees the
 // domain in challengeCache as "cf".
-async function serveViaScrape(
+export async function serveViaScrape(
   stream: net.Socket,
   url: string,
   method: string,
@@ -411,6 +412,7 @@ async function serveViaScrape(
         body: body?.toString("utf8"),
         maxTier: opts.maxTier,
         maxTimeout: opts.maxTimeout,
+        blockedEvidence: true,
       },
       opts.deps,
     )
@@ -442,6 +444,17 @@ async function serveViaScrape(
       response.contentType,
     )
   } catch (err) {
+    if (err instanceof ScrapeError && err.blockedEvidence?.html) {
+      const response = responseFromBlockedEvidence(err.blockedEvidence)
+      if (opts.debug) {
+        console.log(
+          `[proxy] scrape() caught terminal challenge for ${url} (reason: ${err.blockedEvidence.reason}) -> passing through blocked evidence (${response.statusCode})`,
+        )
+      }
+      writeResponseFromBuffer(stream, response.statusCode, response.headers, response.body, response.contentType)
+      return
+    }
+
     console.error("[proxy] scrape() failed for", url, err instanceof Error ? err.message : err)
     writeResponseFromBuffer(
       stream,

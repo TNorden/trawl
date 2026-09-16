@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import type net from "node:net"
 import { PassThrough } from "node:stream"
+import type { BrowserHandle } from "@trawl/browser"
+import type { OrchestratorDeps } from "@trawl/tiers"
 import { writeResponseFromBuffer } from "../httpResponse"
-import { shouldBypassTier0 } from "../server"
+import { serveViaScrape, shouldBypassTier0 } from "../server"
 
 describe("always-scrape Tier 0 policy", () => {
   test("is opt-in and preserves the existing challenge-cache bypass", () => {
@@ -68,5 +70,129 @@ describe("writeResponseFromBuffer — Set-Cookie newline folding", () => {
     const cookieLines = lines.filter((l) => l.toLowerCase().startsWith("set-cookie:"))
     expect(cookieLines).toHaveLength(1)
     expect(cookieLines[0]).toContain("token=xyz")
+  })
+})
+
+describe("serveViaScrape error handling", () => {
+  const WALL_HTML =
+    '<html><head><title>Challenge</title></head><body><form id="challenge-form">blocked</form></body></html>'
+
+  const mockBlockedDeps = (status = 403): OrchestratorDeps => {
+    const mainFrame = {}
+    const wallPage = {
+      url: () => "https://example.com/blocked",
+      title: async () => "Access denied",
+      content: async () => WALL_HTML,
+      goto: async () => {},
+      on: (event: string, handler: (response: unknown) => void) => {
+        if (event !== "response") return
+        handler({
+          url: () => "https://example.com/blocked",
+          status: () => status,
+          headers: () => ({}),
+          body: async () => Buffer.from(WALL_HTML),
+          request: () => ({ isNavigationRequest: () => true, frame: () => mainFrame }),
+        })
+      },
+      off: () => {},
+      once: () => {},
+      mainFrame: () => mainFrame,
+      frames: () => [],
+      context: () => ({ cookies: async () => [] }),
+      evaluate: async () => "test-agent",
+      setExtraHTTPHeaders: async () => {},
+      waitForLoadState: async () => {},
+      close: async () => {},
+      screenshot: async () => Buffer.from("fake-jpeg-bytes"),
+    }
+
+    return {
+      acquireBrowser: async () =>
+        ({
+          id: 1,
+          lease: 1,
+          headful: false,
+          context: { newPage: async () => wallPage, addCookies: async () => {}, cookies: async () => [] },
+          browser: {},
+          fingerprint: { userAgent: "test-agent", platform: "Linux x86_64", locale: "en-US", timezone: "UTC" },
+        }) satisfies BrowserHandle,
+      releaseBrowser: () => {},
+      loadSession: async () => ({ cookies: [], userAgent: "test-agent", savedAt: 1 }),
+      saveSession: async () => {},
+      invalidateSession: async () => {},
+      minTier: 2,
+    }
+  }
+
+  test("passes through challenge wall with original status and headers when scrape fails on a wall", async () => {
+    const stream = new PassThrough()
+    const chunks: Buffer[] = []
+    stream.on("data", (c: Buffer) => chunks.push(c))
+
+    await serveViaScrape(stream as unknown as net.Socket, "https://example.com/blocked", "GET", {}, undefined, {
+      port: 8192,
+      host: "127.0.0.1",
+      caDir: "",
+      maxTier: 2,
+      maxTimeout: 2000,
+      deps: mockBlockedDeps(403),
+    })
+
+    const raw = Buffer.concat(chunks).toString("utf8")
+    expect(raw).toContain("HTTP/1.1 403 Forbidden")
+    expect(raw).toContain("x-trawl-status: blocked")
+    expect(raw).toContain(WALL_HTML)
+    expect(raw).not.toContain("502 Bad Gateway")
+  })
+
+  test("preserves non-403 challenge statuses (e.g. DuckDuckGo HTTP 202)", async () => {
+    const stream = new PassThrough()
+    const chunks: Buffer[] = []
+    stream.on("data", (c: Buffer) => chunks.push(c))
+
+    await serveViaScrape(stream as unknown as net.Socket, "https://example.com/blocked", "GET", {}, undefined, {
+      port: 8192,
+      host: "127.0.0.1",
+      caDir: "",
+      maxTier: 2,
+      maxTimeout: 2000,
+      deps: mockBlockedDeps(202),
+    })
+
+    const raw = Buffer.concat(chunks).toString("utf8")
+    expect(raw).toContain("HTTP/1.1 202 OK")
+    expect(raw).toContain("x-trawl-status: blocked")
+    expect(raw).toContain(WALL_HTML)
+    expect(raw).not.toContain("502 Bad Gateway")
+  })
+
+  test("synthesizes 502 Bad Gateway on generic infrastructure errors without blockedEvidence", async () => {
+    const stream = new PassThrough()
+    const chunks: Buffer[] = []
+    stream.on("data", (c: Buffer) => chunks.push(c))
+
+    const failingDeps: OrchestratorDeps = {
+      acquireBrowser: async () => {
+        throw new Error("Pool acquisition failed")
+      },
+      releaseBrowser: () => {},
+      loadSession: async () => undefined,
+      saveSession: async () => {},
+      invalidateSession: async () => {},
+      minTier: 2,
+    }
+
+    await serveViaScrape(stream as unknown as net.Socket, "https://example.com/error", "GET", {}, undefined, {
+      port: 8192,
+      host: "127.0.0.1",
+      caDir: "",
+      maxTier: 2,
+      maxTimeout: 2000,
+      deps: failingDeps,
+    })
+
+    const raw = Buffer.concat(chunks).toString("utf8")
+    expect(raw).toContain("HTTP/1.1 502 Bad Gateway")
+    expect(raw).toContain("TRAWL proxy error: Pool acquisition failed")
   })
 })
