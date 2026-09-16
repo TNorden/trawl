@@ -13,6 +13,8 @@ export interface ProxyBlockedResponse {
   statusCode: number
 }
 
+const BODYLESS_STATUS_CODES = new Set([204, 205, 304])
+
 const TRANSFORMED_BODY_HEADERS = new Set([
   "content-encoding",
   "content-length",
@@ -54,7 +56,13 @@ export function responseFromScrapeResult(result: ScrapeResult): ProxyBufferedRes
 
 export function responseFromBlockedEvidence(evidence: BlockedEvidence): ProxyBlockedResponse {
   const statusCode =
-    evidence.statusCode && evidence.statusCode >= 200 && evidence.statusCode < 600 ? evidence.statusCode : 403
+    Number.isInteger(evidence.statusCode) &&
+    evidence.statusCode !== undefined &&
+    evidence.statusCode >= 200 &&
+    evidence.statusCode < 600 &&
+    !BODYLESS_STATUS_CODES.has(evidence.statusCode)
+      ? evidence.statusCode
+      : 403
 
   const headers: Record<string, string> = {
     "content-type": "text/html; charset=utf-8",

@@ -136,18 +136,11 @@ describe("responseFromBlockedEvidence", () => {
     })
   })
 
-  test("falls back to 403 when statusCode is missing or invalid", () => {
-    const withoutStatus = responseFromBlockedEvidence({
-      ...baseEvidence,
-      statusCode: undefined,
-    })
-    expect(withoutStatus.statusCode).toBe(403)
-
-    const invalidStatus = responseFromBlockedEvidence({
-      ...baseEvidence,
-      statusCode: 601,
-    })
-    expect(invalidStatus.statusCode).toBe(403)
+  test("falls back to 403 when statusCode cannot carry the challenge body", () => {
+    for (const statusCode of [undefined, 202.5, 204, 205, 304, 601]) {
+      const response = responseFromBlockedEvidence({ ...baseEvidence, statusCode })
+      expect(response.statusCode).toBe(403)
+    }
   })
 
   test("omits x-trawl-reason when reason is undefined", () => {

@@ -160,7 +160,7 @@ describe("serveViaScrape error handling", () => {
     })
 
     const raw = Buffer.concat(chunks).toString("utf8")
-    expect(raw).toContain("HTTP/1.1 202 OK")
+    expect(raw).toContain("HTTP/1.1 202 Accepted")
     expect(raw).toContain("x-trawl-status: blocked")
     expect(raw).toContain(WALL_HTML)
     expect(raw).not.toContain("502 Bad Gateway")
@@ -194,5 +194,40 @@ describe("serveViaScrape error handling", () => {
     const raw = Buffer.concat(chunks).toString("utf8")
     expect(raw).toContain("HTTP/1.1 502 Bad Gateway")
     expect(raw).toContain("TRAWL proxy error: Pool acquisition failed")
+  })
+
+  test("does not return stale evidence when a later browser tier fails", async () => {
+    const stream = new PassThrough()
+    const chunks: Buffer[] = []
+    stream.on("data", (c: Buffer) => chunks.push(c))
+
+    const deps = mockBlockedDeps(403)
+    const acquireBrowser = deps.acquireBrowser
+    deps.acquireBrowser = async (...args) => {
+      const handle = await acquireBrowser(...args)
+      const newPage = handle.context.newPage.bind(handle.context)
+      let pageCount = 0
+      handle.context.newPage = async () => {
+        pageCount += 1
+        if (pageCount > 1) throw new Error("fresh browser failed")
+        return await newPage()
+      }
+      return handle
+    }
+
+    await serveViaScrape(stream as unknown as net.Socket, "https://example.com/blocked", "GET", {}, undefined, {
+      port: 8192,
+      host: "127.0.0.1",
+      caDir: "",
+      maxTier: 3,
+      maxTimeout: 2000,
+      deps,
+    })
+
+    const raw = Buffer.concat(chunks).toString("utf8")
+    expect(raw).toContain("HTTP/1.1 502 Bad Gateway")
+    expect(raw).toContain("TRAWL proxy error: Max tier reached without success")
+    expect(raw).not.toContain(WALL_HTML)
+    expect(raw).not.toContain("x-trawl-status: blocked")
   })
 })

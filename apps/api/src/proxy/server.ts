@@ -391,6 +391,21 @@ async function proxyRequest(
 // Tier 1+ fallback: reissue through the existing browser-backed scrape pipeline.
 // Used when Tier 0 detects a challenge, encounters a network error, or sees the
 // domain in challengeCache as "cf".
+function terminalBlockedEvidence(error: ScrapeError) {
+  const evidence = error.blockedEvidence
+  const terminal = error.timings.at(-1)
+  if (
+    !evidence?.html ||
+    !terminal ||
+    terminal.tier !== evidence.tier ||
+    terminal.status !== evidence.status ||
+    terminal.reason !== evidence.reason
+  ) {
+    return undefined
+  }
+  return evidence
+}
+
 export async function serveViaScrape(
   stream: net.Socket,
   url: string,
@@ -444,11 +459,12 @@ export async function serveViaScrape(
       response.contentType,
     )
   } catch (err) {
-    if (err instanceof ScrapeError && err.blockedEvidence?.html) {
-      const response = responseFromBlockedEvidence(err.blockedEvidence)
+    const evidence = err instanceof ScrapeError ? terminalBlockedEvidence(err) : undefined
+    if (evidence) {
+      const response = responseFromBlockedEvidence(evidence)
       if (opts.debug) {
         console.log(
-          `[proxy] scrape() caught terminal challenge for ${url} (reason: ${err.blockedEvidence.reason}) -> passing through blocked evidence (${response.statusCode})`,
+          `[proxy] scrape() caught terminal challenge for ${url} (reason: ${evidence.reason}) -> passing through blocked evidence (${response.statusCode})`,
         )
       }
       writeResponseFromBuffer(stream, response.statusCode, response.headers, response.body, response.contentType)
