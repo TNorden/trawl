@@ -71,6 +71,10 @@ later requests for the hostname skip Tier 0 and go directly to the tiered solver
 
 Challenge and CAPTCHA solving is best effort. A site can still reject the browser, require user
 interaction, bind clearance to an unsupported signal, or change its challenge implementation.
+When the final browser tier stops on such a wall, the proxy returns its bounded rendered HTML with
+the upstream status code and `X-Trawl-Status: blocked` instead of disguising it as a gateway outage.
+`X-Trawl-Reason` identifies the detected wall when available. Network, browser-pool, and other
+infrastructure failures still return `502 Bad Gateway`.
 
 ## Buffering and streaming
 
