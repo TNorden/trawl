@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Preserve encoded Tier 1 response bodies so MITM clients do not attempt to decompress already-decoded content (#152).
+
 ## [1.6.2] - 2026-09-17
 
 ### Changed
