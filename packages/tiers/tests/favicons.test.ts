@@ -34,6 +34,7 @@ interface Served {
   contentType?: string
   contentLength?: string
   bytes?: Uint8Array
+  chunks?: Uint8Array[]
   throws?: string
 }
 
@@ -53,6 +54,7 @@ const makePage = (options: {
 }) => {
   const requested: string[] = []
   const bodiesRead: string[] = []
+  const bodiesCancelled: string[] = []
   const serve = options.serve ?? {}
   const page = {
     url: () => `${options.origin ?? "https://example.test"}/landed`,
@@ -90,6 +92,7 @@ const makePage = (options: {
         const served = serve[url]
         if (!served) throw new TypeError("NetworkError when attempting to fetch resource.")
         if (served.throws) throw new TypeError(served.throws)
+        const chunks = served.chunks ?? [served.bytes ?? new Uint8Array()]
         return {
           ok: (served.status ?? 200) < 400,
           status: served.status ?? 200,
@@ -100,16 +103,35 @@ const makePage = (options: {
               return null
             },
           },
-          arrayBuffer: async () => {
-            bodiesRead.push(url)
-            return (served.bytes ?? new Uint8Array()).buffer
+          body: {
+            cancel: async () => {
+              bodiesCancelled.push(url)
+            },
+            getReader: () => {
+              let offset = 0
+              let recorded = false
+              return {
+                read: async () => {
+                  if (!recorded) {
+                    bodiesRead.push(url)
+                    recorded = true
+                  }
+                  const value = chunks[offset++]
+                  return value === undefined ? { done: true } : { done: false, value }
+                },
+                cancel: async () => {
+                  bodiesCancelled.push(url)
+                },
+                releaseLock: () => {},
+              }
+            },
           },
         }
       }
       return await fn(arg)
     },
   }
-  return { page, requested, bodiesRead }
+  return { page, requested, bodiesRead, bodiesCancelled }
 }
 
 const poolHandle = (page: unknown): BrowserHandle =>
@@ -364,6 +386,54 @@ describe("capturePageFavicons", () => {
     }
   })
 
+  test("cancels an unknown-length body as soon as streamed chunks exceed the byte cap", async () => {
+    const previous = process.env.FAVICON_MAX_BYTES
+    process.env.FAVICON_MAX_BYTES = "4"
+    try {
+      const { capturePageFavicons: capped } = await import(`../src/favicons?stream-cap`)
+      const { page, bodiesRead, bodiesCancelled } = makePage({
+        serve: {
+          "https://example.test/favicon.ico": {
+            chunks: [new Uint8Array([1, 2, 3]), new Uint8Array([4, 5, 6]), new Uint8Array([7, 8, 9])],
+          },
+        },
+      })
+
+      const icons = await capped(page as any)
+
+      expect(bodiesRead).toEqual(["https://example.test/favicon.ico"])
+      expect(bodiesCancelled).toEqual(["https://example.test/favicon.ico"])
+      expect(icons).toEqual([{ url: "https://example.test/favicon.ico", error: "6 bytes exceeds the 4 byte cap" }])
+    } finally {
+      if (previous === undefined) delete process.env.FAVICON_MAX_BYTES
+      else process.env.FAVICON_MAX_BYTES = previous
+    }
+  })
+
+  test("does not fetch or return an unbounded icon URL", async () => {
+    const previous = process.env.FAVICON_MAX_METADATA_CHARS
+    process.env.FAVICON_MAX_METADATA_CHARS = "64"
+    try {
+      const { capturePageFavicons: capped } = await import(`../src/favicons?metadata-cap`)
+      const longUrl = `https://example.test/${"x".repeat(100)}`
+      const { page, requested } = makePage({
+        links: [{ rel: "icon", href: longUrl }],
+        serve: { "https://example.test/favicon.ico": { bytes: ICO } },
+      })
+
+      const icons = await capped(page as any)
+
+      expect(requested).not.toContain(longUrl)
+      expect(icons[1]).toEqual({
+        url: "<omitted>",
+        error: "icon URL exceeds the 64 character metadata cap",
+      })
+    } finally {
+      if (previous === undefined) delete process.env.FAVICON_MAX_METADATA_CHARS
+      else process.env.FAVICON_MAX_METADATA_CHARS = previous
+    }
+  })
+
   test("skips the apex icon on a non-http origin", async () => {
     const { page, requested } = makePage({ protocol: "file:", origin: "null" })
 
@@ -501,6 +571,7 @@ describe("orchestrator", () => {
     expect(result.favicons).toEqual([
       { url: "https://example.test/favicon.ico", contentType: "image/x-icon", data: ICO.toString("base64") },
     ])
+    expect(result.timings.every((timing) => !("favicons" in timing))).toBe(true)
   })
 
   test("omits the favicons by default and fetches nothing", async () => {

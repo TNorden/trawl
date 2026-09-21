@@ -132,6 +132,7 @@ export async function scrape(
       networkLogs?: unknown
       redirectChain?: unknown
       capturedResponses?: unknown
+      favicons?: unknown
       mhtml?: unknown
     },
   ) => {
@@ -142,6 +143,7 @@ export async function scrape(
       networkLogs: _networkLogs,
       redirectChain: _redirectChain,
       capturedResponses: _capturedResponses,
+      favicons: _favicons,
       mhtml: _mhtml,
       ...publicResult
     } = r

@@ -53,10 +53,10 @@ interface ScrapeRequest {
 | `blockedEvidence` | boolean | false | When no tier clears the challenge, attach the wall the last browser tier stopped at to the 500 body as `blockedEvidence`. It is never attached to a successful result — see the note below. The image rides along only when `screenshot` is also set |
 | `mhtml` | boolean | false        | Assemble a `multipart/related` MHTML archive of the page on the browser tiers (2–4) and return it as `mhtml`. An approximation of "Save as MHTML", not an engine snapshot — see the note below |
 | `ignoreCertificateErrors` | boolean | false | Load the page even when its TLS certificate fails verification (expired, self-signed, issued for another host) instead of failing the fetch. Off by default, so every other caller keeps a verified connection. An unverified connection no longer proves whose page came back, so the request also gets the crossed-landing guard — see the note below |
-| `favicons` | boolean | false | Fetch the apex `/favicon.ico` and every declared `<link rel~="icon">` from inside the page on the browser tiers (2–4) and return them as `favicons` — see the note below |
+| `favicons` | boolean | false | Fetch the apex `/favicon.ico` and every declared link whose `rel` contains `icon` from inside the page on the browser tiers (2–4) and return them as `favicons`. Tier 1 never produces them; use `skipHttp: true` to force a browser attempt — see the note below |
 
 Captured response bodies, headers, console messages, URLs, blocked-page HTML, screenshots,
-and MHTML archives can contain credentials, tokens, personal data, or active scripts.
+favicons, and MHTML archives can contain credentials, tokens, personal data, or active scripts.
 Treat these opt-in fields as sensitive and open archives only when you trust their source.
 
 ## Response
@@ -247,11 +247,13 @@ Two things are collected, in this order:
 
 Duplicates are collapsed, and an icon that could not be read is still returned, with `data`
 absent and `error` set, so "the site declares no icon there" stays distinguishable from "we
-could not fetch it". `fetch()` hands back whole bodies, so a read is bounded by declining to
-start it: an icon declaring more than `FAVICON_MAX_BYTES` is refused on its `Content-Length`,
-and an inline `data:` href too long to decode within that cap is refused before it is
-fetched. Collection is capped at `FAVICON_TIMEOUT_MS` and at whatever is left of the
-request's own `maxTimeout`, and is skipped once that budget is spent.
+could not fetch it". Response bodies are read as a bounded stream: an icon declaring more
+than `FAVICON_MAX_BYTES` is refused on its `Content-Length`, and an unknown-size or dishonest
+response is cancelled as soon as its streamed bytes cross the same cap. An inline `data:`
+href too long to decode within that cap is refused before it is fetched. URLs, content types,
+and error messages are bounded separately. Collection is capped at `FAVICON_TIMEOUT_MS` and
+at whatever is left of the request's own `maxTimeout`, and is skipped once that budget is
+spent. The field is excluded from `timings` and tier telemetry.
 
 Two limits are worth knowing. The in-page `fetch` is subject to the page's CORS policy, so a
 cross-origin icon whose host sends no `Access-Control-Allow-Origin` fails and is reported as
@@ -261,6 +263,9 @@ tunable via `FAVICON_*` — see [Configuration](/getting-started/configuration#f
 
 Icon bytes come from the target like any other scraped content. Treat them as untrusted:
 an `image/svg+xml` icon is a document that can carry script.
+
+Tier 1 is a plain HTTP fetch and never produces `favicons`. Set `skipHttp: true` when favicon
+collection is required rather than merely accepted when escalation reaches a browser tier.
 
 ## Examples
 
