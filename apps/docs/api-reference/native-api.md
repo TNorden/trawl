@@ -175,16 +175,16 @@ sandbox unless you trust the page.
 
 ## Invalid Certificates
 
-`ignoreCertificateErrors: true` lets a page load even though its certificate is expired,
-self-signed or issued for another host — without it the fetch fails outright and nothing
-about the page is readable. The relaxation is per request: Tier 1 retries the fetch
-unverified only after a verified attempt failed on the certificate, Tiers 3 and 4 set it on
-the temporary context they create for that one request, and the pooled contexts every other
-caller uses stay verified. Tier 2 is skipped for these requests (it replays its session
+`ignoreCertificateErrors: true` lets a page load even though a certificate in its redirect
+chain is expired, self-signed or issued for another host — without it the fetch fails
+outright and nothing about the page is readable. The relaxation is per request: Tier 1
+retries only the TLS hop whose verified attempt failed, Tiers 3 and 4 set it on the temporary
+context they create for that one request, and the pooled contexts every other caller uses
+stay verified. Tier 2 is skipped for these requests (it replays its session
 inside the shared pool context, whose TLS policy cannot be changed per request) and shows up
 in `timings` as `skipped`.
 
-When the verified attempt is what failed, its reason comes back as `certificateError`, e.g.
+When a verified Tier 1 hop failed, its reason comes back as `certificateError`, e.g.
 `"DEPTH_ZERO_SELF_SIGNED_CERT: self signed certificate"`. The field is absent when the
 certificate verified, when the flag was not set, and when no verified attempt was made
 (`skipHttp: true`) — absence means "not observed", not "the certificate was valid".
@@ -201,11 +201,11 @@ recorded as `crossed-landing on <host>` and the ladder moves to the next tier, w
 the origin over a different egress. A probe that fails, or that lands off-host as well (an
 ordinary redirect, or cloaking), is inconclusive and the page is kept. The same off-host
 landing reached from two independent egresses is taken as a redirect only a browser performs
-and accepted. The probe runs inside what is left of the request's `maxTimeout`, with a 2s
-floor so a spent budget cannot turn the check into a no-op, and it validates every redirect
-hop against the same outbound policy the tiers enforce. If no tier returns an uncrossed page
-the request fails, and the error names the refused landing rather than returning another
-site's page.
+and accepted. The probe runs inside what is left of the request's `maxTimeout`, sharing one
+deadline across every redirect, and it validates every hop against the same outbound policy
+the tiers enforce. A spent budget makes the check inconclusive instead of starting new I/O.
+If no tier returns an uncrossed page the request fails, and the error names the refused
+landing rather than returning another site's page.
 
 An unverified page is untrusted content by definition. The guard establishes only that the
 connection reached the host that was asked for; it says nothing about whether that host is

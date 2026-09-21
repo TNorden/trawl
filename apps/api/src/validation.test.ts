@@ -40,7 +40,14 @@ describe("API request validation", () => {
     )
   })
 
-  for (const field of ["consoleLogs", "networkLogs", "redirectChain", "blockedEvidence", "mhtml"] as const) {
+  for (const field of [
+    "consoleLogs",
+    "networkLogs",
+    "redirectChain",
+    "blockedEvidence",
+    "mhtml",
+    "ignoreCertificateErrors",
+  ] as const) {
     test(`accepts boolean ${field} flags and rejects other values`, () => {
       expect(() => validateScrapeRequest({ url: "https://example.com", [field]: true })).not.toThrow()
       expect(() => validateScrapeRequest({ url: "https://example.com", [field]: false })).not.toThrow()

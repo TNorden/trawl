@@ -30,11 +30,6 @@ import type { OutboundUrlValidator } from "./outboundPolicy"
 // How long the probe waits for the requested URL to answer.
 export const CROSSED_LANDING_PROBE_TIMEOUT_MS = 10_000
 
-// The probe runs inside the scrape's remaining time budget, but never below this: a probe
-// cut short answers "inconclusive", which keeps the page — the guard must not fail open
-// merely because the clock ran down.
-export const CROSSED_LANDING_PROBE_MIN_MS = 2_000
-
 // Independent egresses that must land on the same off-host address before it is taken as a
 // real browser-only redirect rather than a wrong origin. Counted per egress: the same proxy
 // reaching the same wrong origin twice is one observation repeated, not a confirmation.
@@ -58,8 +53,7 @@ export interface LandingProbeOptions {
   // The user agent the scrape presented, so UA-keyed cloaking cannot split the two.
   userAgent?: string
   ignoreCertificateErrors?: boolean
-  // The scrape's remaining time budget. Clamped into
-  // [CROSSED_LANDING_PROBE_MIN_MS, CROSSED_LANDING_PROBE_TIMEOUT_MS].
+  // The scrape's remaining time budget, capped at CROSSED_LANDING_PROBE_TIMEOUT_MS.
   timeoutMs?: number
   // The same outbound policy the tiers enforce. When present the probe resolves redirects
   // itself and validates every hop, so the guard cannot become a way to reach a host the
@@ -98,21 +92,24 @@ export function isSameSite(requested: string, other: string): boolean {
 }
 
 export const probeLandingHost: LandingProbe = async (url, options) => {
-  const timeout = Math.min(
-    CROSSED_LANDING_PROBE_TIMEOUT_MS,
-    Math.max(CROSSED_LANDING_PROBE_MIN_MS, options.timeoutMs ?? CROSSED_LANDING_PROBE_TIMEOUT_MS),
-  )
+  const timeout = Math.min(CROSSED_LANDING_PROBE_TIMEOUT_MS, options.timeoutMs ?? CROSSED_LANDING_PROBE_TIMEOUT_MS)
+  if (timeout <= 0) return null
+  const deadline = Date.now() + timeout
   const validate = options.validateOutboundUrl
   let response: Response | undefined
   try {
     let currentUrl = url
     for (let redirects = 0; ; redirects++) {
       await validate?.(currentUrl)
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) throw new Error("Probe deadline exceeded")
       response = await fetch(currentUrl, {
         method: "GET",
         redirect: validate ? "manual" : "follow",
         headers: { "User-Agent": options.userAgent ?? FINGERPRINT.userAgent, ...PROBE_HEADERS },
-        signal: AbortSignal.timeout(timeout),
+        // Every redirect shares one deadline. Resetting the full timeout per hop could
+        // let a long chain exceed the scrape's remaining maxTimeout budget many times.
+        signal: AbortSignal.timeout(remaining),
         ...(options.proxy ? { proxy: options.proxy } : {}),
         ...(options.ignoreCertificateErrors ? { tls: { rejectUnauthorized: false } } : {}),
       })
@@ -155,6 +152,9 @@ export function createCrossedLandingGuard(
     async check(landedUrl, options) {
       const landed = hostOf(landedUrl)
       if (!requested || !landed || isSameSite(requested, landed)) return null
+      // A spent scrape budget makes the guard inconclusive; it must not start new I/O
+      // after the caller's deadline merely to manufacture a security decision.
+      if (options.timeoutMs !== undefined && options.timeoutMs <= 0) return null
 
       const probed = await probe(requestedUrl, options)
       if (!probed || !isSameSite(requested, probed)) return null

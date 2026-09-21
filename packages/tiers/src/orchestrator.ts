@@ -153,7 +153,7 @@ export async function scrape(
   // URL demonstrably does not lead to is refused instead of returned (see crossedLanding.ts).
   const ignoreCertificateErrors = Boolean(req.ignoreCertificateErrors)
   const crossedGuard = ignoreCertificateErrors ? createCrossedLandingGuard(req.url, deps.landingProbe) : undefined
-  // Why the requested origin's certificate failed verification, when a tier observed it.
+  // Why certificate verification failed on a Tier 1 hop, when one was observed.
   let certificateError: string | undefined
   // The last landing this request refused, so the terminal error names it.
   let crossedHost: string | undefined
@@ -170,8 +170,7 @@ export async function scrape(
         proxy,
         userAgent,
         ignoreCertificateErrors,
-        // The probe runs inside what is left of the request's budget (floored inside the
-        // guard, so a spent budget cannot turn the check into a no-op).
+        // The probe shares what is left of the request's budget across all of its hops.
         timeoutMs: maxTimeout - (Date.now() - totalStart),
         validateOutboundUrl: deps.validateOutboundUrl,
       })) ?? undefined

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { gzipSync } from "node:zlib"
 import type { BrowserHandle } from "@trawl/types"
 import type { OrchestratorDeps } from "../src/orchestrator"
 import { scrape } from "../src/orchestrator"
@@ -14,82 +15,93 @@ import { runTier4 } from "../src/tiers/4"
 let certDir: string
 let server: ReturnType<typeof Bun.serve>
 let baseUrl: string
+let tlsRequests: Array<{ method: string; path: string }> = []
 
 const PAGE = "<html><body>content behind an untrusted certificate</body></html>"
+const opensslPath = Bun.which("openssl")
 
-beforeAll(() => {
-  certDir = mkdtempSync(join(tmpdir(), "trawl-selfsigned-"))
-  const keyPath = join(certDir, "key.pem")
-  const certPath = join(certDir, "cert.pem")
-  const openssl = Bun.spawnSync([
-    "openssl",
-    "req",
-    "-x509",
-    "-newkey",
-    "rsa:2048",
-    "-keyout",
-    keyPath,
-    "-out",
-    certPath,
-    "-days",
-    "1",
-    "-nodes",
-    "-subj",
-    "/CN=localhost",
-  ])
-  if (!openssl.success) throw new Error(`openssl could not mint the test certificate: ${openssl.stderr.toString()}`)
+describe.skipIf(!opensslPath)("ignoreCertificateErrors", () => {
+  beforeAll(() => {
+    certDir = mkdtempSync(join(tmpdir(), "trawl-selfsigned-"))
+    const keyPath = join(certDir, "key.pem")
+    const certPath = join(certDir, "cert.pem")
+    const openssl = Bun.spawnSync([
+      opensslPath ?? "openssl",
+      "req",
+      "-x509",
+      "-newkey",
+      "rsa:2048",
+      "-keyout",
+      keyPath,
+      "-out",
+      certPath,
+      "-days",
+      "1",
+      "-nodes",
+      "-subj",
+      "/CN=localhost",
+    ])
+    if (!openssl.success) throw new Error(`openssl could not mint the test certificate: ${openssl.stderr.toString()}`)
 
-  server = Bun.serve({
-    port: 0,
-    tls: { key: Bun.file(keyPath), cert: Bun.file(certPath) },
-    fetch: () => new Response(PAGE, { headers: { "Content-Type": "text/html" } }),
-  })
-  baseUrl = `https://localhost:${server.port}/`
-})
-
-afterAll(() => {
-  server.stop(true)
-  rmSync(certDir, { recursive: true, force: true })
-})
-
-const noBrowserDeps: OrchestratorDeps = {
-  acquireBrowser: async () => {
-    throw new Error("Tier 1 should settle this request without a browser")
-  },
-  releaseBrowser: () => {},
-  loadSession: async () => undefined,
-  saveSession: async () => {},
-  invalidateSession: async () => {},
-}
-
-// Fake browser whose context creation records the options a tier asked for, then fails page
-// creation so the tier returns immediately.
-const recordingHandle = () => {
-  const seen: Record<string, unknown>[] = []
-  const context = {
-    addInitScript: async () => {},
-    newPage: async () => {
-      throw new Error("page creation failed")
-    },
-    close: async () => {},
-  }
-  const handle: BrowserHandle = {
-    id: 0,
-    lease: 1,
-    headful: false,
-    context: {},
-    browser: {
-      newContext: async (options: Record<string, unknown>) => {
-        seen.push(options)
-        return context
+    server = Bun.serve({
+      port: 0,
+      tls: { key: Bun.file(keyPath), cert: Bun.file(certPath) },
+      fetch: (request) => {
+        const url = new URL(request.url)
+        tlsRequests.push({ method: request.method, path: url.pathname })
+        if (url.pathname === "/gzip") {
+          return new Response(gzipSync(PAGE), {
+            headers: { "Content-Encoding": "gzip", "Content-Type": "text/html" },
+          })
+        }
+        return new Response(PAGE, { headers: { "Content-Type": "text/html" } })
       },
-    },
-    fingerprint: { userAgent: "test", platform: "Linux x86_64", locale: "en-US", timezone: "UTC" },
-  }
-  return { handle, seen }
-}
+    })
+    baseUrl = `https://localhost:${server.port}/`
+  })
 
-describe("ignoreCertificateErrors", () => {
+  afterAll(() => {
+    server.stop(true)
+    rmSync(certDir, { recursive: true, force: true })
+  })
+
+  const noBrowserDeps: OrchestratorDeps = {
+    acquireBrowser: async () => {
+      throw new Error("Tier 1 should settle this request without a browser")
+    },
+    releaseBrowser: () => {},
+    loadSession: async () => undefined,
+    saveSession: async () => {},
+    invalidateSession: async () => {},
+  }
+
+  // Fake browser whose context creation records the options a tier asked for, then fails page
+  // creation so the tier returns immediately.
+  const recordingHandle = () => {
+    const seen: Record<string, unknown>[] = []
+    const context = {
+      addInitScript: async () => {},
+      newPage: async () => {
+        throw new Error("page creation failed")
+      },
+      close: async () => {},
+    }
+    const handle: BrowserHandle = {
+      id: 0,
+      lease: 1,
+      headful: false,
+      context: {},
+      browser: {
+        newContext: async (options: Record<string, unknown>) => {
+          seen.push(options)
+          return context
+        },
+      },
+      fingerprint: { userAgent: "test", platform: "Linux x86_64", locale: "en-US", timezone: "UTC" },
+    }
+    return { handle, seen }
+  }
+
   test("an invalid certificate is a hard failure by default", async () => {
     const result = await runTier1(baseUrl)
 
@@ -112,6 +124,15 @@ describe("ignoreCertificateErrors", () => {
     expect(result.html).toContain("content behind an untrusted certificate")
     expect(result.statusCode).toBe(200)
     expect(result.certificateError).toContain("DEPTH_ZERO_SELF_SIGNED_CERT")
+  })
+
+  test("the insecure retry preserves encoded representation bytes", async () => {
+    const result = await runTier1(`${baseUrl}gzip`, undefined, undefined, undefined, undefined, undefined, true)
+
+    expect(result.status).toBe("success")
+    expect(result.html).toContain("content behind an untrusted certificate")
+    expect(result.responseHeaders?.["content-encoding"]).toBe("gzip")
+    expect(result.body).toEqual(new Uint8Array(gzipSync(PAGE)))
   })
 
   test("one opted-in request does not relax verification for the next request", async () => {
@@ -150,6 +171,36 @@ describe("ignoreCertificateErrors", () => {
       expect(requests).toBe(1)
     } finally {
       plain.stop(true)
+    }
+  })
+
+  test("a certificate failure after a redirect retries only that hop, not the original POST", async () => {
+    tlsRequests = []
+    let originalPosts = 0
+    const redirector = Bun.serve({
+      port: 0,
+      fetch: (request) => {
+        if (request.method === "POST") originalPosts++
+        return Response.redirect(`${baseUrl}redirect-target`, 307)
+      },
+    })
+    try {
+      const result = await runTier1(
+        `http://127.0.0.1:${redirector.port}/submit`,
+        { "Content-Type": "text/plain" },
+        "POST",
+        "payload",
+        undefined,
+        undefined,
+        true,
+      )
+
+      expect(result.status).toBe("success")
+      expect(result.certificateError).toContain("DEPTH_ZERO_SELF_SIGNED_CERT")
+      expect(originalPosts).toBe(1)
+      expect(tlsRequests).toEqual([{ method: "POST", path: "/redirect-target" }])
+    } finally {
+      redirector.stop(true)
     }
   })
 

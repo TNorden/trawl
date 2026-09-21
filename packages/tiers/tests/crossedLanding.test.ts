@@ -85,6 +85,17 @@ describe("crossed-landing guard", () => {
     expect(await guard.check("https://unrelated-site.test/", {})).toBeNull()
   })
 
+  test("a spent request budget does not start a probe", async () => {
+    let probed = 0
+    const guard = createCrossedLandingGuard("https://example-bank.test/", async () => {
+      probed++
+      return "example-bank.test"
+    })
+
+    expect(await guard.check("https://unrelated-site.test/", { timeoutMs: 0 })).toBeNull()
+    expect(probed).toBe(0)
+  })
+
   test("a probe that lands off-site too is a redirect, not a crossing", async () => {
     const guard = createCrossedLandingGuard("https://old-shop.test/", async () => "new-shop.test")
 
@@ -140,6 +151,30 @@ describe("crossed-landing guard", () => {
 
     expect(host).toBe(landedHost)
     expect(validated).toEqual([requestedUrl, `http://127.0.0.1:${wrongOrigin.port}/landed`])
+  })
+
+  test("redirect hops share one probe deadline", async () => {
+    const slow = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: async (request) => {
+        await Bun.sleep(35)
+        const url = new URL(request.url)
+        if (url.pathname === "/first") return Response.redirect(`http://127.0.0.1:${slow.port}/second`, 302)
+        return new Response("ok")
+      },
+    })
+    try {
+      const url = `http://127.0.0.1:${slow.port}/first`
+      expect(
+        await probeLandingHost(url, {
+          timeoutMs: 50,
+          validateOutboundUrl: async () => {},
+        }),
+      ).toBeNull()
+    } finally {
+      slow.stop(true)
+    }
   })
 
   test("a hop the outbound policy refuses makes the probe inconclusive", async () => {

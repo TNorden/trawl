@@ -179,10 +179,11 @@ export interface ScrapeResult {
   // presence rules as `consoleLogs`. An approximation of browser "Save as MHTML", not a
   // byte-faithful snapshot; omissions are counted inside the archive.
   mhtml?: string
-  // Why the requested origin's certificate failed verification, when `ignoreCertificateErrors`
-  // was set and the page was served anyway (e.g. "self-signed certificate"). Absent when the
-  // certificate verified, when the caller did not opt in, and when no verified attempt was
-  // made (`skipHttp`) — absence is "not observed", not "the certificate was valid".
+  // Why a Tier 1 TLS hop's certificate failed verification when `ignoreCertificateErrors`
+  // was set and the page was served anyway (e.g. "self-signed certificate"). Absent when
+  // every observed certificate verified, when the caller did not opt in, and when no
+  // verified attempt was made (`skipHttp`) — absence is "not observed", not proof that the
+  // certificate was valid.
   certificateError?: string
 }
 
