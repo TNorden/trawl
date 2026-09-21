@@ -67,7 +67,7 @@ describe("responseFromScrapeResult", () => {
     })
   })
 
-  test("strips representation headers from decoded Tier 1 bodies", () => {
+  test("preserves representation headers and raw bytes from Tier 1", () => {
     const bytes = Uint8Array.from([0, 255, 1, 2, 3])
     const response = responseFromScrapeResult(
       result({
@@ -86,10 +86,10 @@ describe("responseFromScrapeResult", () => {
     )
 
     expect([...response.body]).toEqual([...bytes])
-    expect(response.headers["content-encoding"]).toBeUndefined()
-    expect(response.headers["content-range"]).toBeUndefined()
-    expect(response.headers["accept-ranges"]).toBeUndefined()
-    expect(response.headers.etag).toBeUndefined()
+    expect(response.headers["content-encoding"]).toBe("gzip")
+    expect(response.headers["content-range"]).toBe("bytes 0-4/100")
+    expect(response.headers["accept-ranges"]).toBe("bytes")
+    expect(response.headers.etag).toBe('"raw-validator"')
   })
 
   test("serializes decoded browser content with its actual length and no stale encoding", () => {
